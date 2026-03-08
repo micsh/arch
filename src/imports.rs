@@ -259,18 +259,18 @@ mod tests {
     #[test]
     fn test_fsharp_imports() {
         let content = r#"
-namespace AITeam.Core
+namespace MyApp.Core
 
-open AITeam.Boards
-open AITeam.Protocols.Types
-open type AITeam.Core.AgentId
+open MyApp.Data
+open MyApp.Services.Auth
+open type MyApp.Core.UserId
 open System.Collections.Generic
 "#;
         let imports = extract_imports(&PathBuf::from("test.fs"), content);
         assert_eq!(imports.len(), 4);
-        assert_eq!(imports[0].raw, "AITeam.Boards");
-        assert_eq!(imports[1].raw, "AITeam.Protocols.Types");
-        assert_eq!(imports[2].raw, "AITeam.Core.AgentId");
+        assert_eq!(imports[0].raw, "MyApp.Data");
+        assert_eq!(imports[1].raw, "MyApp.Services.Auth");
+        assert_eq!(imports[2].raw, "MyApp.Core.UserId");
         assert_eq!(imports[3].raw, "System.Collections.Generic");
     }
 
@@ -360,15 +360,15 @@ import (
     #[test]
     fn test_fsharp_skips_comments_and_strings() {
         let content = r#"
-open AITeam.Core
-// open AITeam.ShouldNotMatch
-let x = "open AITeam.AlsoNot"
-open AITeam.Boards
+open MyApp.Core
+// open MyApp.ShouldNotMatch
+let x = "open MyApp.AlsoNot"
+open MyApp.Data
 "#;
         let imports = extract_imports(&PathBuf::from("test.fs"), content);
         assert_eq!(imports.len(), 2);
-        assert_eq!(imports[0].raw, "AITeam.Core");
-        assert_eq!(imports[1].raw, "AITeam.Boards");
+        assert_eq!(imports[0].raw, "MyApp.Core");
+        assert_eq!(imports[1].raw, "MyApp.Data");
     }
 
     #[test]

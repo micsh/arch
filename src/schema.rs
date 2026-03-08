@@ -91,14 +91,16 @@ pub struct Rule {
     pub constraint: Option<String>,
 }
 
-/// Stories YAML structure
+/// Stories YAML structure (used for deserialization — no query command yet)
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Stories {
     #[serde(default)]
     pub stories: Vec<Story>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Story {
     pub id: String,
     pub description: String,
