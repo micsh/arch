@@ -31,16 +31,22 @@ arch owns authentication
 # Which source files aren't mapped to any module?
 arch coverage
 
-# Which modules need attention (validates YAML + checks coverage)?
+# Full health check (validate + coverage combined)
 arch stale
+
+# Do actual imports match declared dependencies?
+arch drift
+
+# Do architectural rules hold against the real code?
+arch fitness
 ```
 
 ## What It Creates
 
 ```
 your-project/
-  architecture.yaml              # System map: containers, rules, guidance
   architecture/
+    architecture.yaml            # System map: containers, rules, guidance
     stories.yaml                 # Cross-cutting flows
     backend.yaml                 # Per-container module details
     frontend.yaml
@@ -57,6 +63,10 @@ guidance: |
 system:
   name: MyProject
   description: A web application with API and frontend
+  ignore:
+    - "tests/**"
+    - "**/*.test.ts"
+    - "scripts/**"
 
 containers:
   - id: backend
@@ -91,6 +101,7 @@ modules:
   - id: database
     file: db/mod.rs
     owns: [connection-pool, migrations, query-execution]
+    must_not_depend: [backend/auth]
     boundary: "Data access only — no business logic"
 ```
 
@@ -114,10 +125,64 @@ stories:
 | `arch init` | Scan project structure and generate initial architecture YAML |
 | `arch validate` | Check YAML integrity: files exist, cross-refs valid, schema correct |
 | `arch coverage` | List source files not mapped to any module |
-| `arch owns <concept>` | Find which module owns a concept |
-| `arch stale` | Check architecture health: validate YAML integrity + find unmapped files |
+| `arch owns <concept>` | Find which module owns a concept, file, or module ID |
+| `arch stale` | Full health check: validate + coverage combined |
 | `arch drift` | Compare declared dependencies against actual code imports |
 | `arch fitness` | Validate architectural rules against actual code |
+
+### `arch drift` — Dependency Drift Detection
+
+Parses actual `import`/`open`/`use` statements from source files, resolves them to architecture modules, and compares against declared `depends_on` and `must_not_depend`:
+
+```
+$ arch drift
+🚫 1 forbidden dependency violation(s):
+
+  backend/database (db/mod.rs:3) → backend/auth via `use crate::auth`
+
+⚠️  2 undeclared dependency(ies):
+
+  backend/api (api/mod.rs:5) → frontend/shared via `use crate::shared`
+  backend/api (api/mod.rs:8) → backend/metrics via `use crate::metrics`
+
+📊 12 modules scanned, 3 issue(s) found
+```
+
+Supports: F#, C#, Rust, TypeScript/JavaScript, Python, Go.
+
+### `arch fitness` — Rule Validation
+
+Evaluates architecture rules from `architecture.yaml` against the actual codebase:
+
+```
+$ arch fitness
+✅ backend-independence
+✅ database-leaf
+❌ api-isolation — FAILED
+    backend/api → frontend/shared (forbidden: backend → frontend)
+📋 types-purity (manual check) No function implementations — only type definitions
+
+📊 4 rule(s): 2 passed, 1 failed, 1 manual
+```
+
+- **`no_dependency` rules** are checked against the real import graph — violations are errors
+- **`boundary` rules** are prose constraints reported as manual-check items
+
+## Ignoring Files
+
+Use the `ignore` field in `system:` to exclude files from `coverage` and `drift` checks. Patterns use glob syntax:
+
+```yaml
+system:
+  name: MyProject
+  ignore:
+    - "tests/**"           # test directories
+    - "**/*.test.ts"       # test files by naming convention
+    - "scripts/**"         # build/dev scripts
+    - "benchmarks/**"      # benchmark code
+```
+
+Ignored files won't be flagged as unmapped in `arch coverage` and won't be scanned for imports in `arch drift`.
 
 ## Designed for AI
 
@@ -135,10 +200,19 @@ When multiple AI agents work on a codebase, `arch` provides:
 
 - **Ownership routing** — which agent/coder owns which modules
 - **Boundary enforcement** — what each module should and shouldn't do
+- **Drift detection** — real-time validation that code matches the architecture
 - **Impact analysis** — stories show which modules a change affects
 - **Self-describing** — the YAML defines its own usage instructions
 
 ## YAML Schema Reference
+
+### System Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | ✅ | Project name |
+| `description` | | What this system does |
+| `ignore` | | Glob patterns for files to exclude from coverage and drift checks |
 
 ### Container Fields
 
@@ -178,18 +252,18 @@ When multiple AI agents work on a codebase, `arch` provides:
 | `description` | ✅ | What happens in this flow |
 | `flow` | ✅ | Ordered list of `container/module` steps |
 
-## Language Support for `arch init`
+## Language Support
 
-`arch init` detects project type and scans accordingly:
+`arch drift` parses imports and `arch init` detects project type for these languages:
 
-| Language | Detection | What it scans |
+| Language | Detection | Import syntax |
 |----------|-----------|---------------|
-| Rust | `Cargo.toml` | Workspace members, `mod.rs` files |
-| .NET | `*.sln`, `*.csproj`, `*.fsproj` | Projects, namespaces, references |
-| JavaScript/TypeScript | `package.json` | `src/` structure, imports |
-| Python | `pyproject.toml`, `setup.py` | Package directories, `__init__.py` |
-| Go | `go.mod` | Package directories |
-| Generic | Fallback | Directory structure as containers |
+| Rust | `Cargo.toml` | `use crate::`, `mod`, `use super::` |
+| F# | `*.fsproj` | `open Namespace.Module` |
+| C# | `*.csproj` | `using Namespace;` |
+| TypeScript/JS | `package.json` | `import ... from '...'`, `require('...')` |
+| Python | `pyproject.toml`, `setup.py` | `import module`, `from module import ...` |
+| Go | `go.mod` | `import "package"` |
 
 ## Contributing
 

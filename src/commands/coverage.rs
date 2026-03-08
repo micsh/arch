@@ -1,4 +1,4 @@
-use crate::schema::{Architecture, ContainerDetail};
+use crate::schema::{self, Architecture, ContainerDetail};
 use std::collections::HashSet;
 use walkdir::WalkDir;
 
@@ -14,6 +14,8 @@ pub fn check() -> Result<CoverageResult, String> {
     let content = std::fs::read_to_string(&arch_path).map_err(|e| e.to_string())?;
     let arch: Architecture =
         serde_yaml::from_str(&content).map_err(|e| format!("Invalid architecture.yaml: {e}"))?;
+
+    let ignore_patterns = schema::compile_ignore_patterns(&arch.system.ignore);
 
     // Collect all mapped files
     let mut mapped_files = HashSet::new();
@@ -75,7 +77,10 @@ pub fn check() -> Result<CoverageResult, String> {
                 if let Ok(canonical) = path.canonicalize() {
                     if !mapped_files.contains(&canonical) {
                         let relative = path.strip_prefix(&root).unwrap_or(path);
-                        unmapped.push(relative.display().to_string());
+                        let rel_str = relative.display().to_string();
+                        if !schema::is_ignored(&rel_str, &ignore_patterns) {
+                            unmapped.push(rel_str);
+                        }
                     }
                 }
             }

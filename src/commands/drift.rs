@@ -1,5 +1,5 @@
 use crate::imports;
-use crate::schema::{Architecture, ContainerDetail};
+use crate::schema::{self, Architecture, ContainerDetail};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -237,6 +237,8 @@ pub fn run() -> Result<(), String> {
     let arch: Architecture =
         serde_yaml::from_str(&content).map_err(|e| format!("Invalid architecture.yaml: {e}"))?;
 
+    let ignore_patterns = schema::compile_ignore_patterns(&arch.system.ignore);
+
     // Load all container details
     let mut details: HashMap<String, ContainerDetail> = HashMap::new();
     for container in &arch.containers {
@@ -267,6 +269,12 @@ pub fn run() -> Result<(), String> {
         for module in &detail.modules {
             let file_path = root.join(&container.path).join(&module.file);
             if !file_path.exists() {
+                continue;
+            }
+
+            // Skip ignored files
+            let rel_path = format!("{}/{}", container.path, module.file);
+            if schema::is_ignored(&rel_path, &ignore_patterns) {
                 continue;
             }
 

@@ -1,5 +1,20 @@
+use glob::Pattern;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+
+/// Check if a relative path matches any of the ignore patterns.
+pub fn is_ignored(relative_path: &str, ignore_patterns: &[Pattern]) -> bool {
+    let normalized = relative_path.replace('\\', "/");
+    ignore_patterns.iter().any(|p| p.matches(&normalized))
+}
+
+/// Compile ignore glob strings into patterns.
+pub fn compile_ignore_patterns(patterns: &[String]) -> Vec<Pattern> {
+    patterns
+        .iter()
+        .filter_map(|p| Pattern::new(p).ok())
+        .collect()
+}
 
 /// Find architecture.yaml — checks architecture/architecture.yaml first, then root.
 pub fn find_arch_yaml() -> Result<PathBuf, String> {
@@ -31,6 +46,8 @@ pub struct System {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub ignore: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
