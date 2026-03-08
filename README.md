@@ -276,7 +276,18 @@ When multiple AI agents work on a codebase, `arch` provides:
 | Type | Fields | Description |
 |------|--------|-------------|
 | `no_dependency` | `from`, `to`, `reason` | Forbids dependency between modules/containers |
+| `no_import_from` | `from`, `pattern`, `reason` | Forbids imports matching a glob pattern (e.g., `tests*`) |
 | `boundary` | `module`/`modules`, `constraint` | Enforces a constraint on what a module can do |
+
+Example `no_import_from` rule:
+
+```yaml
+- id: no-test-imports
+  type: no_import_from
+  from: mypackage           # container to check
+  pattern: "tests*"         # matches against import path segments
+  reason: "Production code must not import from test modules"
+```
 
 ### Story Fields
 

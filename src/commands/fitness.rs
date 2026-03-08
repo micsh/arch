@@ -47,6 +47,9 @@ pub fn run() -> Result<(), String> {
             "no_dependency" => {
                 results.push(evaluate_no_dependency(rule, &actual_deps, &arch, &details));
             }
+            "no_import_from" => {
+                results.push(evaluate_no_import_from(rule, &root, &arch, &details));
+            }
             "boundary" => {
                 // Boundary rules are prose constraints — we report them as "manual check"
                 results.push(RuleResult {
@@ -325,4 +328,98 @@ fn resolve_rule_target(
     }
 
     result
+}
+
+/// Evaluate a no_import_from rule: no module in `from` may import anything
+/// matching the glob `pattern` (checked against each import path segment).
+fn evaluate_no_import_from(
+    rule: &Rule,
+    root: &Path,
+    arch: &Architecture,
+    details: &HashMap<String, ContainerDetail>,
+) -> RuleResult {
+    let from = match &rule.from {
+        Some(f) => f,
+        None => {
+            return RuleResult {
+                rule_id: rule.id.clone(),
+                passed: false,
+                violations: vec!["Rule missing 'from' field".to_string()],
+            }
+        }
+    };
+
+    let pattern_str = match &rule.pattern {
+        Some(p) => p,
+        None => {
+            return RuleResult {
+                rule_id: rule.id.clone(),
+                passed: false,
+                violations: vec!["Rule missing 'pattern' field".to_string()],
+            }
+        }
+    };
+
+    let pattern = match glob::Pattern::new(pattern_str) {
+        Ok(p) => p,
+        Err(e) => {
+            return RuleResult {
+                rule_id: rule.id.clone(),
+                passed: false,
+                violations: vec![format!("Invalid glob pattern '{}': {}", pattern_str, e)],
+            }
+        }
+    };
+
+    let from_modules = resolve_rule_target(from, arch, details);
+    let mut violations = Vec::new();
+
+    for container in &arch.containers {
+        let detail = match details.get(&container.id) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        for module in &detail.modules {
+            let full_id = format!("{}/{}", container.id, module.id);
+            if !from_modules.contains(&full_id) && !from_modules.contains(&container.id) {
+                continue;
+            }
+
+            let file_path = root.join(&container.path).join(&module.file);
+            if !file_path.exists() {
+                continue;
+            }
+
+            let file_content = match std::fs::read_to_string(&file_path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            let file_imports = imports::extract_imports(&file_path, &file_content);
+
+            for imp in &file_imports {
+                // Normalize import: replace . and :: with / for segment matching
+                let normalized = imp.raw.replace('.', "/").replace("::", "/");
+                let segments: Vec<&str> = normalized.split('/').collect();
+
+                // Match pattern against each segment or the full normalized path
+                let matches = segments.iter().any(|s| pattern.matches(s))
+                    || pattern.matches(&normalized);
+
+                if matches {
+                    violations.push(format!(
+                        "{} ({}:{}) imports `{}`",
+                        full_id, module.file, imp.line_number, imp.raw
+                    ));
+                }
+            }
+        }
+    }
+
+    RuleResult {
+        rule_id: rule.id.clone(),
+        passed: violations.is_empty(),
+        violations,
+    }
 }

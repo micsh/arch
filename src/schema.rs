@@ -106,6 +106,8 @@ pub struct Rule {
     pub reason: Option<String>,
     #[serde(default)]
     pub constraint: Option<String>,
+    #[serde(default)]
+    pub pattern: Option<String>,
 }
 
 /// Entry-point filenames that imply directory ownership.
