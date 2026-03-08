@@ -34,15 +34,21 @@ modules:
 
   - id: drift
     file: drift.rs
-    owns: [dependency-drift-detection, import-resolution, undeclared-dependency-detection]
+    owns: [dependency-drift-detection, undeclared-dependency-detection]
     boundary: "Read-only analysis — scans source imports vs declared depends_on"
-    depends_on: [schema/schema, imports/imports]
+    depends_on: [schema/schema, imports/imports, resolve/resolve]
 
   - id: fitness
     file: fitness.rs
     owns: [rule-validation, no-dependency-enforcement, boundary-rule-reporting]
     boundary: "Read-only analysis — evaluates architecture rules against actual imports"
     depends_on: [schema/schema, imports/imports]
+
+  - id: stories
+    file: stories.rs
+    owns: [story-flow-verification, bidirectional-connection-check, dependency-graph-building]
+    boundary: "Read-only analysis — verifies story flows against actual imports"
+    depends_on: [schema/schema, imports/imports, resolve/resolve]
 
   - id: mod
     file: mod.rs

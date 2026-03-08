@@ -5,3 +5,4 @@ pub mod owns;
 pub mod stale;
 pub mod drift;
 pub mod fitness;
+pub mod stories;

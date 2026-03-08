@@ -1,5 +1,6 @@
 use crate::schema::{self, Architecture, ContainerDetail};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 pub struct CoverageResult {
@@ -17,8 +18,9 @@ pub fn check() -> Result<CoverageResult, String> {
 
     let ignore_patterns = schema::compile_ignore_patterns(&arch.system.ignore);
 
-    // Collect all mapped files
-    let mut mapped_files = HashSet::new();
+    // Collect all mapped files and directories covered by entry-point modules
+    let mut mapped_files: HashSet<PathBuf> = HashSet::new();
+    let mut covered_dirs: HashSet<PathBuf> = HashSet::new();
 
     for container in &arch.containers {
         let detail_path = root
@@ -36,6 +38,15 @@ pub fn check() -> Result<CoverageResult, String> {
             let full_path = root.join(&container.path).join(&module.file);
             if let Ok(canonical) = full_path.canonicalize() {
                 mapped_files.insert(canonical);
+            }
+
+            // If this module's file is an entry point, mark its directory as covered
+            if schema::is_entry_point(&module.file) {
+                if let Some(parent) = full_path.parent() {
+                    if let Ok(canonical_dir) = parent.canonicalize() {
+                        covered_dirs.insert(canonical_dir);
+                    }
+                }
             }
         }
     }
@@ -76,10 +87,19 @@ pub fn check() -> Result<CoverageResult, String> {
             if source_extensions.contains(ext) {
                 if let Ok(canonical) = path.canonicalize() {
                     if !mapped_files.contains(&canonical) {
-                        let relative = path.strip_prefix(&root).unwrap_or(path);
-                        let rel_str = relative.display().to_string();
-                        if !schema::is_ignored(&rel_str, &ignore_patterns) {
-                            unmapped.push(rel_str);
+                        // Check if file is in a directory covered by an entry-point module
+                        let in_covered_dir = path
+                            .parent()
+                            .and_then(|p| p.canonicalize().ok())
+                            .map(|p| covered_dirs.contains(&p))
+                            .unwrap_or(false);
+
+                        if !in_covered_dir {
+                            let relative = path.strip_prefix(&root).unwrap_or(path);
+                            let rel_str = relative.display().to_string();
+                            if !schema::is_ignored(&rel_str, &ignore_patterns) {
+                                unmapped.push(rel_str);
+                            }
                         }
                     }
                 }

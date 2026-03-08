@@ -34,11 +34,17 @@ containers:
     description: Source file import extraction — language-specific parsers
     depends_on: []
 
+  - id: resolve
+    project: arch
+    path: src
+    description: Shared import resolution — ModuleIndex and external import detection
+    depends_on: [schema]
+
   - id: commands
     project: arch
     path: src/commands
     description: Subcommand implementations — each is self-contained
-    depends_on: [schema, imports]
+    depends_on: [schema, imports, resolve]
 
 rules:
   - id: schema-independence
@@ -56,8 +62,14 @@ rules:
   - id: imports-independence
     type: no_dependency
     from: imports
-    to: [commands, scanner, cli]
+    to: [commands, scanner, cli, resolve]
     reason: "Import extraction is a pure leaf utility — no logic dependencies"
+
+  - id: resolve-independence
+    type: no_dependency
+    from: resolve
+    to: [commands, scanner, cli, imports]
+    reason: "Resolution is a shared utility — depends only on schema types"
 
   - id: commands-isolation
     type: boundary

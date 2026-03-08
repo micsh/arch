@@ -36,12 +36,16 @@ stories:
     description: User detects undeclared or forbidden dependencies by scanning source imports
     flow:
       - cli/cli            # parses `arch drift`
-      - imports/imports    # extracts imports from source files (F#, C#, Rust, TS, Python, Go)
-      - commands/drift     # resolves imports to modules, compares against declared depends_on
+      - commands/drift     # builds ModuleIndex (resolve), extracts imports, compares against declared deps
 
   - id: user-checks-fitness
     description: User validates architectural rules against actual code
     flow:
       - cli/cli            # parses `arch fitness`
-      - imports/imports    # extracts imports for dependency graph
-      - commands/fitness   # evaluates no_dependency rules against import graph, reports boundary rules
+      - commands/fitness   # extracts imports, evaluates no_dependency and boundary rules
+
+  - id: user-checks-stories
+    description: User verifies that story flows are backed by real import connections
+    flow:
+      - cli/cli            # parses `arch stories`
+      - commands/stories   # builds dep graph (resolve + imports), checks consecutive flow pairs

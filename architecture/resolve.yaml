@@ -1,0 +1,9 @@
+# resolve — shared import resolution infrastructure
+# Source: src
+
+modules:
+  - id: resolve
+    file: resolve.rs
+    owns: [module-index, import-resolution, external-import-detection, keyword-indexing]
+    boundary: "Pure resolution logic — no I/O, no command-specific behavior"
+    depends_on: [schema/schema]

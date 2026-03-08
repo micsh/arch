@@ -108,16 +108,34 @@ pub struct Rule {
     pub constraint: Option<String>,
 }
 
-/// Stories YAML structure (used for deserialization — no query command yet)
+/// Entry-point filenames that imply directory ownership.
+/// When a module's `file` points to one of these, all source files
+/// in the same directory are considered covered by that module.
+pub const ENTRY_POINT_FILES: &[&str] = &[
+    "__init__.py",
+    "mod.rs",
+    "lib.rs",
+    "index.ts",
+    "index.tsx",
+    "index.js",
+    "index.jsx",
+];
+
+/// Check whether a module file path ends with a recognized entry-point filename.
+pub fn is_entry_point(file: &str) -> bool {
+    let normalized = file.replace('\\', "/");
+    let file_name = normalized.rsplit('/').next().unwrap_or(&normalized);
+    ENTRY_POINT_FILES.contains(&file_name)
+}
+
+/// Stories YAML structure
 #[derive(Debug, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct Stories {
     #[serde(default)]
     pub stories: Vec<Story>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[allow(dead_code)]
 pub struct Story {
     pub id: String,
     pub description: String,

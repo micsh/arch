@@ -2,6 +2,7 @@ mod commands;
 mod schema;
 mod scanner;
 mod imports;
+mod resolve;
 
 use clap::{Parser, Subcommand};
 
@@ -31,6 +32,8 @@ enum Commands {
     Drift,
     /// Validate architectural rules against actual code
     Fitness,
+    /// Verify story flows against actual import connections
+    Stories,
 }
 
 fn main() {
@@ -44,6 +47,7 @@ fn main() {
         Commands::Stale => commands::stale::run(),
         Commands::Drift => commands::drift::run(),
         Commands::Fitness => commands::fitness::run(),
+        Commands::Stories => commands::stories::run(),
     };
 
     if let Err(e) = result {

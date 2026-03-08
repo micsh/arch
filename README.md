@@ -129,6 +129,7 @@ stories:
 | `arch stale` | Full health check: validate + coverage combined |
 | `arch drift` | Compare declared dependencies against actual code imports |
 | `arch fitness` | Validate architectural rules against actual code |
+| `arch stories` | Verify story flows against actual import connections |
 
 ### `arch drift` — Dependency Drift Detection
 
@@ -167,6 +168,39 @@ $ arch fitness
 
 - **`no_dependency` rules** are checked against the real import graph — violations are errors
 - **`boundary` rules** are prose constraints reported as manual-check items
+
+### `arch stories` — Flow Verification
+
+Validates that story flows in `stories.yaml` are backed by real import connections between modules:
+
+```
+$ arch stories
+📖 trading-cycle — One complete trading cycle: fetch market data and account state...
+  app/orchestrator → app/data  ✅
+  app/data → app/indicators  ✅
+  app/indicators → app/awareness  ✅
+  app/awareness → app/prompts  ✅
+  app/prompts → app/ai  ✅
+  app/ai → app/execution  ✅
+  ✅ 6/6 connections verified
+
+📊 3/3 stories fully connected
+```
+
+For each consecutive pair (A→B) in a flow, stories checks that A imports from B **or** B imports from A (bidirectional — handles event-driven and callback patterns). Same-project modules in compiled languages (.NET, Rust) are considered implicitly connected.
+
+### Directory-Aware Coverage
+
+When a module's `file:` points to a recognized entry point (`__init__.py`, `mod.rs`, `index.ts`, etc.), all source files in that directory are automatically covered by that module. This means you only need one module per package/directory — use `owns:` for concepts, sub-modules for distinct boundary enforcement:
+
+```yaml
+# One module covers the entire models/ directory
+- id: models
+  file: models/__init__.py
+  owns: [market-snapshot, account-state, trade-decision, order-request]
+  boundary: "Pure data structures only — no logic, no I/O"
+  depends_on: []
+```
 
 ## Ignoring Files
 
