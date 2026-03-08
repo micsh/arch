@@ -1,0 +1,9 @@
+# imports — source file import extraction
+# Source: src
+
+modules:
+  - id: imports
+    file: imports.rs
+    owns: [import-extraction, language-parsers, fsharp-imports, csharp-imports, rust-imports, typescript-imports, python-imports, go-imports]
+    boundary: "Pure text extraction — reads source content, returns import strings. No filesystem I/O, no resolution."
+    depends_on: []

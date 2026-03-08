@@ -31,7 +31,7 @@ arch owns authentication
 # Which source files aren't mapped to any module?
 arch coverage
 
-# Which modules have stale definitions (code changed, YAML didn't)?
+# Which modules need attention (validates YAML + checks coverage)?
 arch stale
 ```
 
@@ -115,7 +115,7 @@ stories:
 | `arch validate` | Check YAML integrity: files exist, cross-refs valid, schema correct |
 | `arch coverage` | List source files not mapped to any module |
 | `arch owns <concept>` | Find which module owns a concept |
-| `arch stale` | Compare git timestamps of source files vs YAML last-modified |
+| `arch stale` | Check architecture health: validate YAML integrity + find unmapped files |
 | `arch drift` | Compare declared dependencies against actual code imports |
 | `arch fitness` | Validate architectural rules against actual code |
 

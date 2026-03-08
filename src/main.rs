@@ -1,6 +1,7 @@
 mod commands;
 mod schema;
 mod scanner;
+mod imports;
 
 use clap::{Parser, Subcommand};
 
@@ -26,6 +27,10 @@ enum Commands {
     },
     /// Check architecture health: validate YAML integrity + find unmapped source files
     Stale,
+    /// Compare declared dependencies against actual code imports
+    Drift,
+    /// Validate architectural rules against actual code
+    Fitness,
 }
 
 fn main() {
@@ -37,6 +42,8 @@ fn main() {
         Commands::Coverage => commands::coverage::run(),
         Commands::Owns { concept } => commands::owns::run(&concept),
         Commands::Stale => commands::stale::run(),
+        Commands::Drift => commands::drift::run(),
+        Commands::Fitness => commands::fitness::run(),
     };
 
     if let Err(e) = result {

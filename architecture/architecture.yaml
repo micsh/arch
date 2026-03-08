@@ -1,6 +1,7 @@
 guidance: |
   arch is a single-binary CLI tool. All domain types live in schema.rs.
-  Each command is a standalone module under src/commands/ — commands never call each other.
+  Each command is a standalone module under src/commands/ — commands only share code
+  through extracted check() functions. The stale command composes validate + coverage.
   The scanner detects project type by file presence, not content parsing.
   Before adding a command, check if an existing one already covers the use case.
 
@@ -13,7 +14,7 @@ containers:
     project: arch
     path: src
     description: CLI entry point, argument parsing, command dispatch
-    depends_on: [schema, scanner, commands]
+    depends_on: [schema, scanner, commands, imports]
 
   - id: schema
     project: arch
@@ -27,11 +28,17 @@ containers:
     description: Project type detection by file presence
     depends_on: []
 
+  - id: imports
+    project: arch
+    path: src
+    description: Source file import extraction — language-specific parsers
+    depends_on: []
+
   - id: commands
     project: arch
     path: src/commands
     description: Subcommand implementations — each is self-contained
-    depends_on: [schema]
+    depends_on: [schema, imports]
 
 rules:
   - id: schema-independence
@@ -46,8 +53,14 @@ rules:
     to: [commands, cli]
     reason: "Scanner is a leaf utility — only used by init command"
 
-  - id: commands-no-cross-call
+  - id: imports-independence
+    type: no_dependency
+    from: imports
+    to: [commands, scanner, cli]
+    reason: "Import extraction is a pure leaf utility — no logic dependencies"
+
+  - id: commands-isolation
     type: boundary
-    modules: [init, validate, coverage, owns, stale]
-    constraint: "Commands never import or call each other"
-    reason: "Each command is independently testable and deployable"
+    modules: [init, validate, coverage, owns]
+    constraint: "Leaf commands do not import other commands — only schema"
+    reason: "Each leaf command is independently testable"
