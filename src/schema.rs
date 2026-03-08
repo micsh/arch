@@ -1,4 +1,19 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+/// Find architecture.yaml — checks architecture/architecture.yaml first, then root.
+pub fn find_arch_yaml() -> Result<PathBuf, String> {
+    let root = std::env::current_dir().map_err(|e| e.to_string())?;
+    let nested = root.join("architecture").join("architecture.yaml");
+    if nested.exists() {
+        return Ok(nested);
+    }
+    let flat = root.join("architecture.yaml");
+    if flat.exists() {
+        return Ok(flat);
+    }
+    Err("architecture.yaml not found. Run `arch init` first.".into())
+}
 
 /// Root architecture.yaml structure
 #[derive(Debug, Serialize, Deserialize)]

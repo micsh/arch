@@ -4,11 +4,7 @@ use walkdir::WalkDir;
 
 pub fn run() -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
-    let arch_path = root.join("architecture.yaml");
-
-    if !arch_path.exists() {
-        return Err("architecture.yaml not found. Run `arch init` first.".into());
-    }
+    let arch_path = crate::schema::find_arch_yaml()?;
 
     let content = std::fs::read_to_string(&arch_path).map_err(|e| e.to_string())?;
     let arch: Architecture =

@@ -4,7 +4,7 @@ use std::path::Path;
 pub fn run() -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
 
-    if root.join("architecture.yaml").exists() {
+    if root.join("architecture").join("architecture.yaml").exists() || root.join("architecture.yaml").exists() {
         return Err("architecture.yaml already exists. Delete it first to reinitialize.".into());
     }
 
@@ -26,13 +26,13 @@ pub fn run() -> Result<(), String> {
         .and_then(|n| n.to_str())
         .unwrap_or("MyProject");
 
-    // Generate root architecture.yaml
-    let yaml = generate_root_yaml(project_name);
-    std::fs::write(root.join("architecture.yaml"), yaml).map_err(|e| e.to_string())?;
-
     // Create architecture/ directory
     let arch_dir = root.join("architecture");
     std::fs::create_dir_all(&arch_dir).map_err(|e| e.to_string())?;
+
+    // Generate root architecture.yaml inside architecture/
+    let yaml = generate_root_yaml(project_name);
+    std::fs::write(arch_dir.join("architecture.yaml"), yaml).map_err(|e| e.to_string())?;
 
     // Generate stories.yaml stub
     let stories = generate_stories_stub();
@@ -47,7 +47,7 @@ pub fn run() -> Result<(), String> {
     }
 
     println!("\nCreated:");
-    println!("  architecture.yaml");
+    println!("  architecture/architecture.yaml");
     println!("  architecture/stories.yaml");
     for (id, _) in &containers {
         println!("  architecture/{id}.yaml");
