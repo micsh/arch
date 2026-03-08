@@ -1,0 +1,46 @@
+mod commands;
+mod schema;
+mod scanner;
+
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(name = "arch", version, about = "Architecture-as-code for any codebase")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Scan project structure and generate initial architecture YAML
+    Init,
+    /// Check YAML integrity: files exist, cross-refs valid, schema correct
+    Validate,
+    /// List source files not mapped to any module
+    Coverage,
+    /// Find which module owns a concept
+    Owns {
+        /// The concept to look up
+        concept: String,
+    },
+    /// Compare git timestamps of source files vs YAML last-modified
+    Stale,
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Commands::Init => commands::init::run(),
+        Commands::Validate => commands::validate::run(),
+        Commands::Coverage => commands::coverage::run(),
+        Commands::Owns { concept } => commands::owns::run(&concept),
+        Commands::Stale => commands::stale::run(),
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
+}

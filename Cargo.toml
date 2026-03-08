@@ -1,0 +1,23 @@
+[package]
+name = "arch"
+version = "0.1.0"
+edition = "2024"
+description = "Architecture-as-code for any codebase. Define, query, and validate your project structure using YAML."
+license = "MIT"
+repository = "https://github.com/micsh/arch"
+keywords = ["architecture", "codebase", "yaml", "cli", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+walkdir = "2"
+glob = "0.3"
+colored = "2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
