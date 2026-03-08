@@ -220,7 +220,7 @@ Ignored files won't be flagged as unmapped in `arch coverage` and won't be scann
 
 ## Designed for AI
 
-The `guidance:` block in `architecture.yaml` is injected into AI agent prompts automatically. It tells agents:
+The `guidance:` block in `architecture.yaml` provides instructions for AI agents working on the codebase. Teams can wire it into agent prompts however they like — the field is there as a convention. Typical guidance tells agents:
 
 1. **Before coding** — read the relevant container YAML for ownership and boundaries
 2. **After coding** — update the YAML if ownership or dependencies changed
