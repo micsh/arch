@@ -52,8 +52,15 @@ pub fn run() -> Result<(), String> {
             continue;
         }
 
+        let skip_dirs: HashSet<&str> =
+            ["obj", "bin", "target", "node_modules", ".git", "dist", "build", "__pycache__"].into();
+
         for entry in WalkDir::new(&container_path)
             .into_iter()
+            .filter_entry(|e| {
+                !e.file_type().is_dir()
+                    || !skip_dirs.contains(e.file_name().to_str().unwrap_or(""))
+            })
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {

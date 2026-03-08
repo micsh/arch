@@ -28,12 +28,29 @@ pub fn run(concept: &str) -> Result<(), String> {
             .map_err(|e| format!("Invalid {}: {e}", detail_path.display()))?;
 
         for module in &detail.modules {
+            // Search owns fields
             for owned in &module.owns {
                 if owned.to_lowercase().contains(&query) {
                     matches.push((
                         format!("{}/{}", container.id, module.id),
                         module.file.clone(),
                         owned.clone(),
+                        module.boundary.clone(),
+                    ));
+                }
+            }
+            // Also match on module id or file name
+            if module.id.to_lowercase().contains(&query)
+                || module.file.to_lowercase().contains(&query)
+            {
+                let already = matches
+                    .iter()
+                    .any(|(p, _, _, _)| *p == format!("{}/{}", container.id, module.id));
+                if !already {
+                    matches.push((
+                        format!("{}/{}", container.id, module.id),
+                        module.file.clone(),
+                        format!("[module: {}]", module.id),
                         module.boundary.clone(),
                     ));
                 }
