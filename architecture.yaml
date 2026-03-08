@@ -1,0 +1,53 @@
+guidance: |
+  arch is a single-binary CLI tool. All domain types live in schema.rs.
+  Each command is a standalone module under src/commands/ — commands never call each other.
+  The scanner detects project type by file presence, not content parsing.
+  Before adding a command, check if an existing one already covers the use case.
+
+system:
+  name: arch
+  description: Architecture-as-code CLI — validate, query, and maintain architecture YAML for any codebase
+
+containers:
+  - id: cli
+    project: arch
+    path: src
+    description: CLI entry point, argument parsing, command dispatch
+    depends_on: [schema, scanner, commands]
+
+  - id: schema
+    project: arch
+    path: src
+    description: YAML type definitions shared by all commands
+    depends_on: []
+
+  - id: scanner
+    project: arch
+    path: src
+    description: Project type detection by file presence
+    depends_on: []
+
+  - id: commands
+    project: arch
+    path: src/commands
+    description: Subcommand implementations — each is self-contained
+    depends_on: [schema]
+
+rules:
+  - id: schema-independence
+    type: no_dependency
+    from: schema
+    to: [commands, scanner, cli]
+    reason: "Schema types are pure data — no logic dependencies"
+
+  - id: scanner-independence
+    type: no_dependency
+    from: scanner
+    to: [commands, cli]
+    reason: "Scanner is a leaf utility — only used by init command"
+
+  - id: commands-no-cross-call
+    type: boundary
+    modules: [init, validate, coverage, owns, stale]
+    constraint: "Commands never import or call each other"
+    reason: "Each command is independently testable and deployable"

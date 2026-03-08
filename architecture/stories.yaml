@@ -1,0 +1,33 @@
+# Cross-cutting flows connecting modules across containers.
+
+stories:
+  - id: user-runs-init
+    description: User scaffolds architecture YAML for a new project
+    flow:
+      - cli/cli           # parses `arch init` args
+      - scanner/scanner   # detects project type (Rust/JS/.NET/etc)
+      - commands/init     # scans dirs, generates YAML files
+
+  - id: user-validates
+    description: User checks YAML integrity after edits
+    flow:
+      - cli/cli           # parses `arch validate`
+      - commands/validate  # loads root + container YAMLs, checks refs and files
+
+  - id: user-queries-ownership
+    description: User finds which module owns a concept before editing
+    flow:
+      - cli/cli           # parses `arch owns <concept>`
+      - commands/owns     # searches owns fields, module ids, file names
+
+  - id: user-checks-coverage
+    description: User finds unmapped source files
+    flow:
+      - cli/cli           # parses `arch coverage`
+      - commands/coverage  # walks source dirs, compares to mapped files
+
+  - id: user-checks-staleness
+    description: User detects if architecture YAML is out of date
+    flow:
+      - cli/cli           # parses `arch stale`
+      - commands/stale    # compares git timestamps

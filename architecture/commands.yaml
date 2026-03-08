@@ -1,0 +1,39 @@
+# commands — subcommand implementations
+# Source: src/commands
+
+modules:
+  - id: init
+    file: init.rs
+    owns: [project-scaffolding, template-generation, directory-scanning]
+    boundary: "Scaffolding only — uses scanner for detection, schema for types"
+    depends_on: [scanner/scanner, schema/schema]
+
+  - id: validate
+    file: validate.rs
+    owns: [yaml-integrity, cross-ref-validation, file-existence-checks]
+    boundary: "Read-only validation — never modifies files"
+    depends_on: [schema/schema]
+
+  - id: coverage
+    file: coverage.rs
+    owns: [unmapped-file-detection, source-file-walking]
+    boundary: "Read-only analysis — walks filesystem, compares to YAML"
+    depends_on: [schema/schema]
+
+  - id: owns
+    file: owns.rs
+    owns: [concept-lookup, module-search, ownership-queries]
+    boundary: "Read-only query — searches owns fields, module ids, file names"
+    depends_on: [schema/schema]
+
+  - id: stale
+    file: stale.rs
+    owns: [freshness-detection, git-timestamp-comparison]
+    boundary: "Read-only — compares git mtime of source vs YAML files"
+    depends_on: [schema/schema]
+
+  - id: mod
+    file: mod.rs
+    owns: [command-module-exports]
+    boundary: "Re-exports only"
+    depends_on: []

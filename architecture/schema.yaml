@@ -1,0 +1,9 @@
+# schema — YAML type definitions
+# Source: src
+
+modules:
+  - id: schema
+    file: schema.rs
+    owns: [architecture-types, container-types, module-types, rule-types, story-types]
+    boundary: "Pure data types with serde derives — no logic, no I/O"
+    depends_on: []

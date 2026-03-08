@@ -1,0 +1,9 @@
+# scanner — project type detection
+# Source: src
+
+modules:
+  - id: scanner
+    file: scanner.rs
+    owns: [project-type-detection, source-dir-scanning, language-identification]
+    boundary: "Detection by file presence only — never reads file contents"
+    depends_on: []

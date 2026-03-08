@@ -1,0 +1,9 @@
+# cli — entry point and argument parsing
+# Source: src
+
+modules:
+  - id: cli
+    file: main.rs
+    owns: [arg-parsing, command-dispatch, error-display]
+    boundary: "Dispatch only — no business logic, delegates to command modules"
+    depends_on: [commands/init, commands/validate, commands/coverage, commands/owns, commands/stale]
