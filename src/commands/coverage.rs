@@ -2,7 +2,12 @@ use crate::schema::{Architecture, ContainerDetail};
 use std::collections::HashSet;
 use walkdir::WalkDir;
 
-pub fn run() -> Result<(), String> {
+pub struct CoverageResult {
+    pub unmapped: Vec<String>,
+}
+
+/// Core coverage logic — returns structured results without printing.
+pub fn check() -> Result<CoverageResult, String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     let arch_path = crate::schema::find_arch_yaml()?;
 
@@ -77,11 +82,17 @@ pub fn run() -> Result<(), String> {
         }
     }
 
-    if unmapped.is_empty() {
+    Ok(CoverageResult { unmapped })
+}
+
+pub fn run() -> Result<(), String> {
+    let result = check()?;
+
+    if result.unmapped.is_empty() {
         println!("✅ All source files are mapped to modules");
     } else {
-        println!("📂 {} unmapped source file(s):\n", unmapped.len());
-        for f in &unmapped {
+        println!("📂 {} unmapped source file(s):\n", result.unmapped.len());
+        for f in &result.unmapped {
             println!("  {f}");
         }
     }

@@ -24,7 +24,7 @@ enum Commands {
         /// The concept to look up
         concept: String,
     },
-    /// Compare git timestamps of source files vs YAML last-modified
+    /// Check architecture health: validate YAML integrity + find unmapped source files
     Stale,
 }
 

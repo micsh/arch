@@ -1,7 +1,14 @@
 use crate::schema::{Architecture, ContainerDetail};
 use std::path::Path;
 
-pub fn run() -> Result<(), String> {
+pub struct ValidationResult {
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    pub container_count: usize,
+}
+
+/// Core validation logic — returns structured results without printing.
+pub fn check() -> Result<ValidationResult, String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     let arch_path = crate::schema::find_arch_yaml()?;
 
@@ -53,22 +60,31 @@ pub fn run() -> Result<(), String> {
         }
     }
 
-    // Report
-    if errors.is_empty() && warnings.is_empty() {
-        println!("✅ Architecture is valid ({} containers)", arch.containers.len());
+    Ok(ValidationResult {
+        errors,
+        warnings,
+        container_count: arch.containers.len(),
+    })
+}
+
+pub fn run() -> Result<(), String> {
+    let result = check()?;
+
+    if result.errors.is_empty() && result.warnings.is_empty() {
+        println!("✅ Architecture is valid ({} containers)", result.container_count);
     } else {
-        for w in &warnings {
+        for w in &result.warnings {
             println!("⚠️  {w}");
         }
-        for e in &errors {
+        for e in &result.errors {
             println!("❌ {e}");
         }
-        if !errors.is_empty() {
-            return Err(format!("{} error(s), {} warning(s)", errors.len(), warnings.len()));
+        if !result.errors.is_empty() {
+            return Err(format!("{} error(s), {} warning(s)", result.errors.len(), result.warnings.len()));
         }
         println!(
             "\n✅ Valid with {} warning(s)",
-            warnings.len()
+            result.warnings.len()
         );
     }
 
