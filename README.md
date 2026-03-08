@@ -301,7 +301,7 @@ When multiple AI agents work on a codebase, `arch` provides:
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions welcome! Open an issue or submit a pull request.
 
 ## License
 
