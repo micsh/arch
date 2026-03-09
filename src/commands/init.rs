@@ -216,6 +216,23 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
                 }
             }
         }
+
+        // Scan for Rust modules (mod.rs or lib.rs)
+        if modules.is_empty() {
+            for entry in walkdir::WalkDir::new(&container_dir)
+                .max_depth(3)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+            {
+                let name = entry.file_name().to_str().unwrap_or("");
+                if name == "mod.rs" || name == "lib.rs" {
+                    if let Some(m) = infer_rust_module(&container_dir, entry.path()) {
+                        modules.push(m);
+                    }
+                }
+            }
+        }
     }
 
     if modules.is_empty() {
@@ -227,7 +244,11 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
     for m in &modules {
         yaml.push_str(&format!("  - id: {}\n", m.id));
         yaml.push_str(&format!("    file: {}\n", m.file));
-        yaml.push_str(&format!("    owns: [{}]\n", m.id)); // placeholder
+        let owns_str = m.owns.join(", ");
+        yaml.push_str(&format!("    owns: [{}]\n", owns_str));
+        if let Some(ref boundary) = m.boundary {
+            yaml.push_str(&format!("    boundary: \"{}\"\n", boundary));
+        }
         if !m.depends_on.is_empty() {
             yaml.push_str(&format!("    depends_on: [{}]\n", m.depends_on.join(", ")));
         }
@@ -240,7 +261,55 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
 struct InferredModule {
     id: String,
     file: String,
+    owns: Vec<String>,
+    boundary: Option<String>,
     depends_on: Vec<String>,
+}
+
+/// Classify a .NET project by naming convention.
+fn classify_dotnet_project(stem: &str) -> (&'static str, Option<&'static str>) {
+    let lower = stem.to_lowercase();
+    if lower.ends_with(".tests") || lower.ends_with(".test") || lower.ends_with(".unittests") {
+        ("test", Some("Test code only — no production logic"))
+    } else if lower.ends_with(".contracts") || lower.ends_with(".abstractions") || lower.ends_with(".interfaces") {
+        ("contracts", Some("Pure interfaces and DTOs — no implementation"))
+    } else if lower.ends_with(".application") || lower.ends_with(".service") || lower.ends_with(".host") {
+        ("service-host", Some("Application entry point and hosting"))
+    } else if lower.ends_with(".domain") || lower.ends_with(".core") {
+        ("domain", Some("Core business logic — no infrastructure dependencies"))
+    } else if lower.ends_with(".infrastructure") || lower.ends_with(".data") {
+        ("infrastructure", Some("Infrastructure and data access"))
+    } else if lower.contains(".client") || lower.contains(".generated") {
+        ("generated-client", Some("Generated code — do not edit manually"))
+    } else {
+        ("library", None)
+    }
+}
+
+/// Derive owns concepts from project name segments.
+fn infer_owns(stem: &str, classification: &str) -> Vec<String> {
+    let mut owns = Vec::new();
+
+    // Split by dots and take meaningful segments (skip common prefixes)
+    let segments: Vec<&str> = stem.split('.').collect();
+    for seg in &segments {
+        let kebab = stem_to_kebab(seg);
+        if !kebab.is_empty() && kebab.len() > 2 {
+            owns.push(kebab);
+        }
+    }
+
+    // Add classification as an own if not already present
+    if !owns.iter().any(|o| o == classification) && classification != "library" {
+        owns.push(classification.to_string());
+    }
+
+    if owns.is_empty() {
+        owns.push(stem_to_kebab(stem));
+    }
+
+    owns.dedup();
+    owns
 }
 
 /// Infer a module from a .csproj/.fsproj file.
@@ -250,16 +319,18 @@ fn infer_dotnet_module(container_dir: &Path, proj_path: &Path) -> Option<Inferre
     let file = rel.to_string_lossy().replace('\\', "/");
     let stem = proj_path.file_stem()?.to_str()?;
 
-    // Derive module ID from project name (kebab-case)
     let id = stem_to_kebab(stem);
+    let (classification, boundary) = classify_dotnet_project(stem);
+    let owns = infer_owns(stem, classification);
 
-    // Parse ProjectReference from the .csproj XML
     let content = std::fs::read_to_string(proj_path).ok()?;
     let deps = parse_project_references(&content);
 
     Some(InferredModule {
         id,
         file,
+        owns,
+        boundary: boundary.map(|s| s.to_string()),
         depends_on: deps,
     })
 }
@@ -272,11 +343,89 @@ fn infer_python_module(container_dir: &Path, init_path: &Path) -> Option<Inferre
     let name = parent.file_name()?.to_str()?;
     let id = stem_to_kebab(name);
 
+    // Try to read pyproject.toml in the container dir for dependency info
+    let deps = find_python_deps(container_dir, name);
+
     Some(InferredModule {
-        id,
+        id: id.clone(),
         file,
+        owns: vec![id],
+        boundary: None,
+        depends_on: deps,
+    })
+}
+
+/// Infer a module from a Rust mod.rs or lib.rs.
+fn infer_rust_module(container_dir: &Path, mod_path: &Path) -> Option<InferredModule> {
+    let parent = mod_path.parent()?;
+    let rel = mod_path.strip_prefix(container_dir).ok()?;
+    let file = rel.to_string_lossy().replace('\\', "/");
+    let name = if mod_path.file_name()?.to_str()? == "lib.rs" {
+        container_dir.file_name()?.to_str()?
+    } else {
+        parent.file_name()?.to_str()?
+    };
+    let id = stem_to_kebab(name);
+
+    Some(InferredModule {
+        id: id.clone(),
+        file,
+        owns: vec![id],
+        boundary: None,
         depends_on: vec![],
     })
+}
+
+/// Look for pyproject.toml and extract internal dependencies for a given package.
+fn find_python_deps(container_dir: &Path, _package_name: &str) -> Vec<String> {
+    // Walk up to find pyproject.toml
+    let pyproject = container_dir.join("pyproject.toml");
+    if !pyproject.exists() {
+        return vec![];
+    }
+
+    let content = match std::fs::read_to_string(&pyproject) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    // Simple parsing: look for dependencies = [...] lines
+    let mut deps = Vec::new();
+    let mut in_deps = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("dependencies") && trimmed.contains('[') {
+            in_deps = true;
+            // Check for inline array
+            if let Some(start) = trimmed.find('[') {
+                let rest = &trimmed[start + 1..];
+                if let Some(end) = rest.find(']') {
+                    for dep in rest[..end].split(',') {
+                        let dep = dep.trim().trim_matches('"').trim_matches('\'');
+                        let name = dep.split(['>', '<', '=', '!', '~', ';', ' ']).next().unwrap_or("");
+                        if !name.is_empty() {
+                            deps.push(stem_to_kebab(name));
+                        }
+                    }
+                    in_deps = false;
+                }
+            }
+            continue;
+        }
+        if in_deps {
+            if trimmed == "]" {
+                in_deps = false;
+                continue;
+            }
+            let dep = trimmed.trim_matches('"').trim_matches('\'').trim_matches(',');
+            let name = dep.split(['>', '<', '=', '!', '~', ';', ' ']).next().unwrap_or("");
+            if !name.is_empty() {
+                deps.push(stem_to_kebab(name));
+            }
+        }
+    }
+
+    deps
 }
 
 /// Convert a PascalCase or dot-separated project name to kebab-case.
