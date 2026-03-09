@@ -142,18 +142,34 @@ impl ModuleIndex {
 
     /// Resolve an import string to a set of possible module IDs.
     /// Applies language scoping, same-container preference, and specificity ranking.
+    /// Excludes same-container matches (use `resolve_all` when intra-container visibility needed).
     pub fn resolve(&self, import: &str, source_container: &str) -> HashSet<String> {
         let source_lang = self.container_language(source_container);
-        self.resolve_with_lang(import, source_container, source_lang)
+        self.resolve_impl(import, source_container, source_lang, true)
     }
 
-    fn resolve_with_lang(
+    /// Like resolve(), but includes same-container matches in results.
+    /// Used by stories to verify intra-container import connections.
+    pub fn resolve_all(&self, import: &str, source_container: &str) -> HashSet<String> {
+        let source_lang = self.container_language(source_container);
+        self.resolve_impl(import, source_container, source_lang, false)
+    }
+
+    fn resolve_impl(
         &self,
         import: &str,
         source_container: &str,
         source_lang: Language,
+        exclude_self_container: bool,
     ) -> HashSet<String> {
         let normalized = import.to_lowercase();
+
+        // Python relative imports (starting with .) are always intra-package —
+        // they should never resolve to a different container
+        if normalized.starts_with('.') {
+            return HashSet::new();
+        }
+
         // Specific results: matched via container.module composite or direct module ID
         let mut specific = HashSet::new();
         // Broad results: matched via container name only (fan-out)
@@ -242,11 +258,13 @@ impl ModuleIndex {
         // Merge: prefer specific matches; fall back to broad only if no specific match
         let mut results = if specific.is_empty() { broad } else { specific };
 
-        // Filter: remove self-references (same container)
-        results.retain(|m| {
-            let container = m.split('/').next().unwrap_or("");
-            container != source_container
-        });
+        // Filter: remove self-references (same container) when requested
+        if exclude_self_container {
+            results.retain(|m| {
+                let container = m.split('/').next().unwrap_or("");
+                container != source_container
+            });
+        }
 
         // Language scoping: filter out cross-language matches
         // Unknown-language containers only match if no known-language results exist
@@ -569,5 +587,55 @@ mod tests {
         let result = index.resolve("auth", "backend");
 
         assert!(result.is_empty(), "Self-container imports should be excluded, got: {:?}", result);
+    }
+
+    #[test]
+    fn test_python_relative_imports_never_cross_container() {
+        // Python relative imports (.foo, .bar.baz) should never match other containers
+        let arch = make_arch(vec![
+            make_container("python", "src/python", vec![], None),
+            make_container("autosegmentation", "src/AutoSeg", vec![], None),
+        ]);
+        let mut details = HashMap::new();
+        details.insert("python".to_string(), make_detail(vec![
+            make_module("auto-segmentation", "auto_seg/__init__.py", vec!["segmentation"]),
+        ]));
+        details.insert("autosegmentation".to_string(), make_detail(vec![
+            make_module("fsharp-prototype", "prototype.fsx", vec!["legacy"]),
+        ]));
+
+        let root = Path::new(".");
+        let index = ModuleIndex::build(root, &arch, &details);
+
+        // Relative imports should resolve to nothing (intra-package, not cross-container)
+        let result = index.resolve(".auto_segmentation", "python");
+        assert!(result.is_empty(), "Relative Python imports should not cross containers, got: {:?}", result);
+
+        let result2 = index.resolve(".auto_segmentation.servicebus_listener", "python");
+        assert!(result2.is_empty(), "Dotted relative Python imports should not cross containers, got: {:?}", result2);
+    }
+
+    #[test]
+    fn test_resolve_all_includes_same_container() {
+        // resolve_all should include same-container matches (for stories)
+        let arch = make_arch(vec![
+            make_container("backend", "src/backend", vec![], None),
+        ]);
+        let mut details = HashMap::new();
+        details.insert("backend".to_string(), make_detail(vec![
+            make_module("auth", "auth.rs", vec!["authentication"]),
+            make_module("api", "api.rs", vec!["routing"]),
+        ]));
+
+        let root = Path::new(".");
+        let index = ModuleIndex::build(root, &arch, &details);
+
+        // resolve() excludes self-container
+        let result = index.resolve("auth", "backend");
+        assert!(result.is_empty(), "resolve() should exclude same-container, got: {:?}", result);
+
+        // resolve_all() includes self-container
+        let result_all = index.resolve_all("auth", "backend");
+        assert!(result_all.contains("backend/auth"), "resolve_all() should include same-container, got: {:?}", result_all);
     }
 }

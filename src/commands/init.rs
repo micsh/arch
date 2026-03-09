@@ -201,23 +201,28 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
             }
         }
 
-        // Scan for Python packages (__init__.py)
-        if modules.is_empty() {
-            for entry in walkdir::WalkDir::new(&container_dir)
-                .max_depth(3)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-            {
-                if entry.file_name() == "__init__.py" {
-                    if let Some(m) = infer_python_module(&container_dir, entry.path()) {
+        // Scan for Python packages (__init__.py) — always scan, not just when .NET is empty
+        for entry in walkdir::WalkDir::new(&container_dir)
+            .max_depth(4)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_str().unwrap_or("");
+                !e.file_type().is_dir() || !crate::schema::SKIP_DIRS.contains(&name)
+            })
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            if entry.file_name() == "__init__.py" {
+                if let Some(m) = infer_python_module(&container_dir, entry.path()) {
+                    // Avoid duplicating a module ID already inferred
+                    if !modules.iter().any(|existing| existing.id == m.id) {
                         modules.push(m);
                     }
                 }
             }
         }
 
-        // Scan for Rust modules (mod.rs or lib.rs)
+        // Scan for Rust modules (mod.rs or lib.rs) — only if no modules found yet
         if modules.is_empty() {
             for entry in walkdir::WalkDir::new(&container_dir)
                 .max_depth(3)
@@ -237,6 +242,28 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
 
     if modules.is_empty() {
         return generate_container_yaml(id, rel_path);
+    }
+
+    // Deduplicate: if two modules get the same ID, append a numeric suffix
+    let mut id_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for m in &modules {
+        *id_counts.entry(m.id.clone()).or_default() += 1;
+    }
+    let duplicated_ids: std::collections::HashSet<String> = id_counts.into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(id, _)| id)
+        .collect();
+    if !duplicated_ids.is_empty() {
+        let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for m in &mut modules {
+            if duplicated_ids.contains(&m.id) {
+                let n = seen.entry(m.id.clone()).or_default();
+                *n += 1;
+                if *n > 1 {
+                    m.id = format!("{}-{}", m.id, n);
+                }
+            }
+        }
     }
 
     let mut yaml = format!("# {id} — TODO: describe this container\n# Source: {rel_path}\n\nmodules:\n");
@@ -317,12 +344,23 @@ fn infer_owns(stem: &str, classification: &str) -> Vec<String> {
 fn infer_dotnet_module(container_dir: &Path, proj_path: &Path) -> Option<InferredModule> {
     let rel = proj_path.strip_prefix(container_dir).ok()?;
     let file = rel.to_string_lossy().replace('\\', "/");
+
+    // Skip template/placeholder projects (paths with {variable} tokens)
+    if file.contains('{') && file.contains('}') {
+        return None;
+    }
+
     let stem = proj_path.file_stem()?.to_str()?;
-
-    let id = stem_to_kebab(stem);
     let (classification, boundary) = classify_dotnet_project(stem);
-    let owns = infer_owns(stem, classification);
 
+    // Use full stem for classified projects to disambiguate (e.g., "shared-tests" not "tests")
+    let id = if classification != "library" {
+        stem_to_kebab_full(stem)
+    } else {
+        stem_to_kebab(stem)
+    };
+
+    let owns = infer_owns(stem, classification);
     let content = std::fs::read_to_string(proj_path).ok()?;
     let deps = parse_project_references(&content);
 
@@ -428,16 +466,33 @@ fn find_python_deps(container_dir: &Path, _package_name: &str) -> Vec<String> {
     deps
 }
 
-/// Convert a PascalCase or dot-separated project name to kebab-case.
+/// Convert a PascalCase or dot-separated project name to kebab-case module ID.
+/// For classified projects (tests, contracts, etc.), uses more stem segments to disambiguate.
+/// e.g., "Shared.Tests" → "shared-tests", "Foundation.Tests" → "foundation-tests"
 /// e.g., "DataProcessing.Domain" → "domain", "MyApp" → "my-app"
 fn stem_to_kebab(s: &str) -> String {
     // Use the last dot-segment if present
     let base = s.rsplit('.').next().unwrap_or(s);
+    pascal_to_kebab(base)
+}
 
-    // Insert hyphens before uppercase runs
+/// Like stem_to_kebab but uses last two dot-segments for disambiguation.
+/// e.g., "Shared.Tests" → "shared-tests", "DurableTasks.Tests" → "durable-tasks-tests"
+fn stem_to_kebab_full(s: &str) -> String {
+    let segments: Vec<&str> = s.split('.').collect();
+    if segments.len() >= 2 {
+        let base = format!("{}-{}", segments[segments.len() - 2], segments[segments.len() - 1]);
+        pascal_to_kebab(&base)
+    } else {
+        pascal_to_kebab(s)
+    }
+}
+
+/// Convert PascalCase to kebab-case: "DataProcessing" → "data-processing"
+fn pascal_to_kebab(s: &str) -> String {
     let mut result = String::new();
-    for (i, ch) in base.chars().enumerate() {
-        if i > 0 && ch.is_uppercase() && !base.chars().nth(i - 1).unwrap_or('A').is_uppercase() {
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && ch.is_uppercase() && !s.chars().nth(i - 1).unwrap_or('A').is_uppercase() {
             result.push('-');
         }
         result.push(ch.to_lowercase().next().unwrap_or(ch));

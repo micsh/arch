@@ -38,7 +38,7 @@ fn build_dep_graph(
                     if is_external_import(&imp.raw) {
                         continue;
                     }
-                    let resolved = index.resolve(&imp.raw, &container.id);
+                    let resolved = index.resolve_all(&imp.raw, &container.id);
                     for target in &resolved {
                         let target_lower = target.to_lowercase();
                         if target_lower != full_id {

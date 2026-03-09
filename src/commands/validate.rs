@@ -20,6 +20,16 @@ pub fn check() -> Result<ValidationResult, String> {
 
     let container_ids: Vec<&str> = ctx.arch.containers.iter().map(|c| c.id.as_str()).collect();
 
+    // Build set of all "container/module" IDs for cross-reference validation
+    let mut all_module_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for container in &ctx.arch.containers {
+        if let Some(detail) = ctx.details.get(&container.id) {
+            for module in &detail.modules {
+                all_module_ids.insert(format!("{}/{}", container.id, module.id));
+            }
+        }
+    }
+
     for container in &ctx.arch.containers {
         if !ctx.root.join(&container.path).exists() {
             errors.push(format!(
@@ -46,7 +56,7 @@ pub fn check() -> Result<ValidationResult, String> {
                 container.id, container.id
             ));
         } else {
-            validate_container_detail(&ctx.root, container, &detail_path, &mut errors)?;
+            validate_container_detail(&ctx.root, container, &detail_path, &mut errors, &mut warnings, &all_module_ids)?;
         }
     }
 
@@ -124,12 +134,25 @@ fn validate_container_detail(
     container: &crate::schema::Container,
     detail_path: &Path,
     errors: &mut Vec<String>,
+    warnings: &mut Vec<String>,
+    all_module_ids: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let content = std::fs::read_to_string(detail_path).map_err(|e| e.to_string())?;
     let detail: ContainerDetail =
         serde_yaml::from_str(&content).map_err(|e| format!("Invalid {}: {e}", detail_path.display()))?;
 
     let container_root = root.join(&container.path);
+
+    // Check for duplicate module IDs within this container
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for module in &detail.modules {
+        if !seen_ids.insert(module.id.clone()) {
+            errors.push(format!(
+                "{}/{}: duplicate module id '{}' — IDs must be unique within a container",
+                container.id, module.id, module.id
+            ));
+        }
+    }
 
     for module in &detail.modules {
         for file in module.all_files() {
@@ -147,6 +170,25 @@ fn validate_container_detail(
                 "{}/{}: 'owns' is empty — every module should own at least one concept",
                 container.id, module.id
             ));
+        }
+
+        // Warn on unresolved depends_on references
+        for dep in &module.depends_on {
+            if !dep.contains('/') && !all_module_ids.contains(dep) {
+                // Bare name — check if it's a known module ID in this container
+                let local = format!("{}/{}", container.id, dep);
+                if !all_module_ids.contains(&local) {
+                    warnings.push(format!(
+                        "{}/{}: depends_on '{}' — bare name, should use container/module format",
+                        container.id, module.id, dep
+                    ));
+                }
+            } else if dep.contains('/') && !all_module_ids.contains(dep) {
+                warnings.push(format!(
+                    "{}/{}: depends_on '{}' — module not found",
+                    container.id, module.id, dep
+                ));
+            }
         }
     }
 

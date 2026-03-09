@@ -92,6 +92,50 @@ fn check_drift(
     imp: &imports::Import,
     drift_items: &mut Vec<DriftItem>,
 ) {
+    // Detect broad fan-out: all resolved targets in same foreign container
+    // → collapse to single container-level violation
+    let cross_container: Vec<&String> = resolved.iter()
+        .filter(|t| {
+            let tl = t.to_lowercase();
+            tl != self_id && t.split('/').next().unwrap_or("") != container_id
+        })
+        .collect();
+
+    if cross_container.len() > 1 {
+        let containers: HashSet<&str> = cross_container.iter()
+            .map(|t| t.split('/').next().unwrap_or(""))
+            .collect();
+        if containers.len() == 1 {
+            // All targets in one foreign container — this is broad fan-out
+            let target_container = *containers.iter().next().unwrap();
+            let target_lower = target_container.to_lowercase();
+
+            if forbidden_deps.iter().any(|d| d == &target_lower || cross_container.iter().any(|t| t.to_lowercase() == *d)) {
+                drift_items.push(DriftItem {
+                    module_id: format!("{}/{}", container_id, module.id),
+                    file: display_file.to_string(),
+                    import_raw: imp.raw.clone(),
+                    line_number: imp.line_number,
+                    target_module: format!("{} [broad match]", target_container),
+                    kind: "forbidden".to_string(),
+                });
+            } else if !declared_deps.iter().any(|d| target_lower.starts_with(d.as_str()))
+                && !container_deps.contains(target_container)
+            {
+                drift_items.push(DriftItem {
+                    module_id: format!("{}/{}", container_id, module.id),
+                    file: display_file.to_string(),
+                    import_raw: imp.raw.clone(),
+                    line_number: imp.line_number,
+                    target_module: format!("{} [broad match]", target_container),
+                    kind: "undeclared".to_string(),
+                });
+            }
+            return;
+        }
+    }
+
+    // Normal path: check each target individually
     for target in resolved {
         let target_lower = target.to_lowercase();
         if target_lower == self_id {
