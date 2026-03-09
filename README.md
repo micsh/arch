@@ -152,6 +152,9 @@ stories:
 | `arch mermaid` | Generate Mermaid container dependency diagram |
 | `arch mermaid --brief` | Generate diagram with IDs only (no descriptions) |
 | `arch mermaid --stories` | Generate Mermaid flowcharts from stories.yaml |
+| `arch mermaid --c4` | Generate C4 Container diagram |
+| `arch mermaid --svg [FILE]` | Render to SVG (requires `mmdc`) |
+| `arch mermaid --update-readme` | Inject diagram into README.md between markers |
 
 All commands except `init` and `mermaid` support `--json` for structured output.
 
@@ -280,17 +283,65 @@ Generates Mermaid diagrams from your architecture YAML. Output is Mermaid text �
 # Container-level dependency diagram with module subgraphs
 arch mermaid
 
+# Compact version with IDs only
+arch mermaid --brief
+
+# C4 Container diagram
+arch mermaid --c4
+
 # Story flow diagrams
 arch mermaid --stories
+
+# Render to SVG (requires @mermaid-js/mermaid-cli)
+arch mermaid --svg                    # → architecture.svg
+arch mermaid --svg diagram.svg        # → custom path
+arch mermaid --c4 --svg               # C4 as SVG
+
+# Auto-inject into README.md
+arch mermaid --update-readme          # replaces content between markers
+arch mermaid --c4 --update-readme     # C4 version
 ```
 
-Container diagram example output:
-```
+Container diagram example:
+```mermaid
 graph LR
     backend["REST API\n(5 modules)"]
     frontend["React UI\n(3 modules)"]
     frontend --> backend
 ```
+
+C4 Container diagram example:
+```mermaid
+C4Container
+    title Container diagram for MyProject
+
+    System_Boundary(system, "MyProject") {
+        Container(backend, "backend", "", "REST API and business logic")
+        Container(frontend, "frontend", "", "React UI")
+    }
+
+    Rel(frontend, backend, "depends on")
+```
+
+#### SVG Export
+
+Requires [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli):
+
+```bash
+npm i -g @mermaid-js/mermaid-cli
+arch mermaid --svg
+```
+
+#### Auto-Update README
+
+Add markers to your README.md where you want the diagram injected:
+
+```markdown
+<!-- arch:mermaid:start -->
+<!-- arch:mermaid:end -->
+```
+
+Then run `arch mermaid --update-readme` (or combine with `--c4`). The diagram will be inserted as a fenced Mermaid code block between the markers. Useful in CI to keep documentation in sync.
 
 ### `--json` Output
 

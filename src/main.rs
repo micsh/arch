@@ -51,6 +51,15 @@ enum Commands {
         /// Use brief labels (IDs only, no descriptions)
         #[arg(long)]
         brief: bool,
+        /// Generate C4 Container diagram
+        #[arg(long)]
+        c4: bool,
+        /// Render to SVG file (requires mmdc / @mermaid-js/mermaid-cli)
+        #[arg(long, default_missing_value = "architecture.svg", num_args = 0..=1)]
+        svg: Option<String>,
+        /// Inject diagram into README.md between <!-- arch:mermaid:start/end --> markers
+        #[arg(long)]
+        update_readme: bool,
     },
 }
 
@@ -67,7 +76,8 @@ fn main() {
         Commands::Drift => commands::drift::run(json),
         Commands::Fitness => commands::fitness::run(json),
         Commands::Stories => commands::stories::run(json),
-        Commands::Mermaid { stories, brief } => commands::mermaid::run(stories, brief),
+        Commands::Mermaid { stories, brief, c4, svg, update_readme } =>
+            commands::mermaid::run(stories, brief, c4, svg, update_readme),
     };
 
     if let Err(e) = result {
