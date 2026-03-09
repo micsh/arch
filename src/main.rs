@@ -20,7 +20,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Scan project structure and generate initial architecture YAML
-    Init,
+    Init {
+        /// Deep scan: infer modules from .csproj ProjectReference tags and Python packages
+        #[arg(long)]
+        deep: bool,
+    },
     /// Check YAML integrity: files exist, cross-refs valid, schema correct
     Validate,
     /// List source files not mapped to any module
@@ -43,6 +47,9 @@ enum Commands {
         /// Generate story flow diagrams instead of container diagram
         #[arg(long)]
         stories: bool,
+        /// Use brief labels (IDs only, no descriptions)
+        #[arg(long)]
+        brief: bool,
     },
 }
 
@@ -51,7 +58,7 @@ fn main() {
     let json = cli.json;
 
     let result = match cli.command {
-        Commands::Init => commands::init::run(),
+        Commands::Init { deep } => commands::init::run(deep),
         Commands::Validate => commands::validate::run(json),
         Commands::Coverage => commands::coverage::run(json),
         Commands::Owns { concept } => commands::owns::run(&concept, json),
@@ -59,7 +66,7 @@ fn main() {
         Commands::Drift => commands::drift::run(json),
         Commands::Fitness => commands::fitness::run(json),
         Commands::Stories => commands::stories::run(json),
-        Commands::Mermaid { stories } => commands::mermaid::run(stories),
+        Commands::Mermaid { stories, brief } => commands::mermaid::run(stories, brief),
     };
 
     if let Err(e) = result {

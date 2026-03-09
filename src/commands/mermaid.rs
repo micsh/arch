@@ -1,7 +1,7 @@
 use crate::schema::{Architecture, ContainerDetail, Stories};
 use std::collections::HashMap;
 
-pub fn run(stories_mode: bool) -> Result<(), String> {
+pub fn run(stories_mode: bool, brief: bool) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     let arch_path = crate::schema::find_arch_yaml()?;
 
@@ -12,7 +12,7 @@ pub fn run(stories_mode: bool) -> Result<(), String> {
     if stories_mode {
         render_stories(&root, &arch)
     } else {
-        render_containers(&root, &arch)
+        render_containers(&root, &arch, brief)
     }
 }
 
@@ -20,6 +20,7 @@ pub fn run(stories_mode: bool) -> Result<(), String> {
 fn render_containers(
     root: &std::path::Path,
     arch: &Architecture,
+    brief: bool,
 ) -> Result<(), String> {
     // Load container details for module counts
     let mut details: HashMap<String, ContainerDetail> = HashMap::new();
@@ -43,16 +44,20 @@ fn render_containers(
             .get(&container.id)
             .map(|d| d.modules.len())
             .unwrap_or(0);
-        let desc = container
-            .description
-            .as_deref()
-            .unwrap_or(&container.id);
-        let label = if module_count > 0 {
-            format!("{desc}\\n({module_count} modules)")
-        } else {
-            desc.to_string()
-        };
         let node_id = sanitize_id(&container.id);
+        let label = if brief {
+            container.id.clone()
+        } else {
+            let desc = container
+                .description
+                .as_deref()
+                .unwrap_or(&container.id);
+            if module_count > 0 {
+                format!("{desc}\\n({module_count} modules)")
+            } else {
+                desc.to_string()
+            }
+        };
         println!("    {node_id}[\"{label}\"]");
     }
 
@@ -74,10 +79,11 @@ fn render_containers(
             if let Some(detail) = details.get(&container.id) {
                 if detail.modules.len() > 1 {
                     let sub_id = sanitize_id(&container.id);
-                    let label = container
-                        .description
-                        .as_deref()
-                        .unwrap_or(&container.id);
+                    let label = if brief {
+                        &container.id
+                    } else {
+                        container.description.as_deref().unwrap_or(&container.id)
+                    };
                     println!("    subgraph {sub_id}_detail[\"{label}\"]");
                     for module in &detail.modules {
                         let mod_id = sanitize_id(&format!("{}_{}", container.id, module.id));

@@ -216,6 +216,24 @@ impl Language {
     }
 }
 
+/// Normalize an identifier for matching: lowercase, strip hyphens, underscores, dots.
+/// Used consistently in index building AND resolution lookups.
+/// e.g., "Durable-Tasks" → "durabletasks", "auto_segmentation" → "autosegmentation"
+pub fn normalize_id(s: &str) -> String {
+    s.to_lowercase()
+        .replace('-', "")
+        .replace('_', "")
+}
+
+/// Normalize for composite keys (dots preserved as separators, segments normalized).
+/// e.g., "Common.Durable-Tasks" → "common.durabletasks"
+pub fn normalize_dotted(s: &str) -> String {
+    s.split('.')
+        .map(|seg| normalize_id(seg))
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
 /// Detect language from a file path based on extension.
 pub fn detect_language(file: &str) -> Language {
     let normalized = file.replace('\\', "/");

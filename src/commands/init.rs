@@ -1,7 +1,7 @@
 use crate::scanner;
 use std::path::Path;
 
-pub fn run() -> Result<(), String> {
+pub fn run(deep: bool) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
 
     if root.join("architecture").join("architecture.yaml").exists() || root.join("architecture.yaml").exists() {
@@ -19,7 +19,11 @@ pub fn run() -> Result<(), String> {
     };
 
     println!("Detected project type: {type_name}");
-    println!("Scanning project structure...");
+    if deep {
+        println!("Deep scan: inferring modules from project files...");
+    } else {
+        println!("Scanning project structure...");
+    }
 
     let project_name = root
         .file_name()
@@ -43,7 +47,11 @@ pub fn run() -> Result<(), String> {
 
     // Generate per-container detail files
     for (id, path) in &containers {
-        let container_yaml = generate_container_yaml(id, path);
+        let container_yaml = if deep {
+            generate_deep_container_yaml(&root, id, path)
+        } else {
+            generate_container_yaml(id, path)
+        };
         std::fs::write(arch_dir.join(format!("{id}.yaml")), container_yaml)
             .map_err(|e| e.to_string())?;
     }
@@ -162,4 +170,155 @@ modules: []
   #   depends_on: [backend/database]
 "#
     )
+}
+
+/// Deep scan: find .csproj/.fsproj files and __init__.py packages,
+/// infer modules with depends_on from ProjectReference tags.
+fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String {
+    let container_dir = root.join(rel_path);
+    let mut modules: Vec<InferredModule> = Vec::new();
+
+    if container_dir.is_dir() {
+        // Scan for .NET project files
+        for entry in walkdir::WalkDir::new(&container_dir)
+            .into_iter()
+            .filter_entry(|e| {
+                let name = e.file_name().to_str().unwrap_or("");
+                !e.file_type().is_dir() || !crate::schema::SKIP_DIRS.contains(&name)
+            })
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            match ext {
+                "csproj" | "fsproj" | "vbproj" => {
+                    if let Some(m) = infer_dotnet_module(&container_dir, path) {
+                        modules.push(m);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Scan for Python packages (__init__.py)
+        if modules.is_empty() {
+            for entry in walkdir::WalkDir::new(&container_dir)
+                .max_depth(3)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+            {
+                if entry.file_name() == "__init__.py" {
+                    if let Some(m) = infer_python_module(&container_dir, entry.path()) {
+                        modules.push(m);
+                    }
+                }
+            }
+        }
+    }
+
+    if modules.is_empty() {
+        return generate_container_yaml(id, rel_path);
+    }
+
+    let mut yaml = format!("# {id} — TODO: describe this container\n# Source: {rel_path}\n\nmodules:\n");
+
+    for m in &modules {
+        yaml.push_str(&format!("  - id: {}\n", m.id));
+        yaml.push_str(&format!("    file: {}\n", m.file));
+        yaml.push_str(&format!("    owns: [{}]\n", m.id)); // placeholder
+        if !m.depends_on.is_empty() {
+            yaml.push_str(&format!("    depends_on: [{}]\n", m.depends_on.join(", ")));
+        }
+        yaml.push('\n');
+    }
+
+    yaml
+}
+
+struct InferredModule {
+    id: String,
+    file: String,
+    depends_on: Vec<String>,
+}
+
+/// Infer a module from a .csproj/.fsproj file.
+/// Reads <ProjectReference> tags to populate depends_on.
+fn infer_dotnet_module(container_dir: &Path, proj_path: &Path) -> Option<InferredModule> {
+    let rel = proj_path.strip_prefix(container_dir).ok()?;
+    let file = rel.to_string_lossy().replace('\\', "/");
+    let stem = proj_path.file_stem()?.to_str()?;
+
+    // Derive module ID from project name (kebab-case)
+    let id = stem_to_kebab(stem);
+
+    // Parse ProjectReference from the .csproj XML
+    let content = std::fs::read_to_string(proj_path).ok()?;
+    let deps = parse_project_references(&content);
+
+    Some(InferredModule {
+        id,
+        file,
+        depends_on: deps,
+    })
+}
+
+/// Infer a module from a Python __init__.py.
+fn infer_python_module(container_dir: &Path, init_path: &Path) -> Option<InferredModule> {
+    let parent = init_path.parent()?;
+    let rel = init_path.strip_prefix(container_dir).ok()?;
+    let file = rel.to_string_lossy().replace('\\', "/");
+    let name = parent.file_name()?.to_str()?;
+    let id = stem_to_kebab(name);
+
+    Some(InferredModule {
+        id,
+        file,
+        depends_on: vec![],
+    })
+}
+
+/// Convert a PascalCase or dot-separated project name to kebab-case.
+/// e.g., "DataProcessing.Domain" → "domain", "MyApp" → "my-app"
+fn stem_to_kebab(s: &str) -> String {
+    // Use the last dot-segment if present
+    let base = s.rsplit('.').next().unwrap_or(s);
+
+    // Insert hyphens before uppercase runs
+    let mut result = String::new();
+    for (i, ch) in base.chars().enumerate() {
+        if i > 0 && ch.is_uppercase() && !base.chars().nth(i - 1).unwrap_or('A').is_uppercase() {
+            result.push('-');
+        }
+        result.push(ch.to_lowercase().next().unwrap_or(ch));
+    }
+    result
+}
+
+/// Parse <ProjectReference Include="..."> from a .csproj file.
+/// Returns kebab-case module IDs derived from referenced project names.
+fn parse_project_references(content: &str) -> Vec<String> {
+    let mut refs = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("ProjectReference") && trimmed.contains("Include=") {
+            // Extract the Include="..." value
+            if let Some(start) = trimmed.find("Include=\"") {
+                let rest = &trimmed[start + 9..];
+                if let Some(end) = rest.find('"') {
+                    let path = &rest[..end];
+                    // Get the project name from the path
+                    let proj_name = Path::new(path)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
+                    if !proj_name.is_empty() {
+                        refs.push(stem_to_kebab(proj_name));
+                    }
+                }
+            }
+        }
+    }
+    refs
 }

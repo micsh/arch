@@ -141,6 +141,7 @@ stories:
 | Command | Description |
 |---------|-------------|
 | `arch init` | Scan project structure and generate initial architecture YAML |
+| `arch init --deep` | Deep scan: infer modules from .csproj ProjectReference tags, Python packages |
 | `arch validate` | Check YAML integrity: files exist, cross-refs valid, schema correct |
 | `arch coverage` | List source files not mapped to any module |
 | `arch owns <concept>` | Find which module owns a concept, file, or module ID |
@@ -149,6 +150,7 @@ stories:
 | `arch fitness` | Validate architectural rules against actual code |
 | `arch stories` | Verify story flows against actual import connections |
 | `arch mermaid` | Generate Mermaid container dependency diagram |
+| `arch mermaid --brief` | Generate diagram with IDs only (no descriptions) |
 | `arch mermaid --stories` | Generate Mermaid flowcharts from stories.yaml |
 
 All commands except `init` and `mermaid` support `--json` for structured output.
