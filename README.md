@@ -163,12 +163,15 @@ Parses actual `import`/`open`/`use` statements from source files, resolves them 
 $ arch drift
 🚫 1 forbidden dependency violation(s):
 
-  backend/database (db/mod.rs:3) → backend/auth via `use crate::auth`
+  backend/database (db/mod.rs:3)
+    import: use crate::auth → backend/auth
 
 ⚠️  2 undeclared dependency(ies):
 
-  backend/api (api/mod.rs:5) → frontend/shared via `use crate::shared`
-  backend/api (api/mod.rs:8) → backend/metrics via `use crate::metrics`
+  backend/api (api/mod.rs:5)
+    import: use crate::shared → frontend/shared
+  backend/api (api/mod.rs:8)
+    import: use crate::metrics → backend/metrics
 
 📊 12 modules scanned, 3 issue(s) found
 ```
