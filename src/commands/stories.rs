@@ -22,9 +22,11 @@ fn build_dep_graph(
     for container in &arch.containers {
         if let Some(detail) = details.get(&container.id) {
             for module in &detail.modules {
-                let full_path = root.join(&container.path).join(&module.file);
-                if let Ok(canonical) = full_path.canonicalize() {
-                    explicitly_mapped.insert(canonical);
+                for file in module.all_files() {
+                    let full_path = root.join(&container.path).join(file);
+                    if let Ok(canonical) = full_path.canonicalize() {
+                        explicitly_mapped.insert(canonical);
+                    }
                 }
             }
         }
@@ -40,16 +42,18 @@ fn build_dep_graph(
 
         for module in &detail.modules {
             let full_id = format!("{}/{}", container.id, module.id).to_lowercase();
-            let entry_path = root.join(&container.path).join(&module.file);
 
             let mut files_to_scan: Vec<PathBuf> = vec![];
-            if entry_path.exists() {
-                files_to_scan.push(entry_path.clone());
-            }
 
-            // Directory-owner modules: scan all source files in directory tree
-            if schema::is_directory_owner(&module.file) {
-                if let Some(dir) = entry_path.parent() {
+            for file in module.all_files() {
+                let entry_path = root.join(&container.path).join(file);
+                if entry_path.exists() {
+                    files_to_scan.push(entry_path.clone());
+                }
+
+                // Directory-owner modules: scan all source files in directory tree
+                if schema::is_directory_owner(file) {
+                    if let Some(dir) = entry_path.parent() {
                     let skip_dirs: HashSet<&str> = crate::schema::SKIP_DIRS.iter().copied().collect();
                     for entry in walkdir::WalkDir::new(dir)
                         .into_iter()
@@ -72,6 +76,7 @@ fn build_dep_graph(
                         }
                         files_to_scan.push(path);
                     }
+                }
                 }
             }
 

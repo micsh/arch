@@ -49,3 +49,9 @@ stories:
     flow:
       - cli/cli            # parses `arch stories`
       - commands/stories   # builds dep graph (resolve + imports), checks consecutive flow pairs
+
+  - id: user-generates-diagrams
+    description: User generates Mermaid architecture diagrams for documentation
+    flow:
+      - cli/cli              # parses `arch mermaid` or `arch mermaid --stories`
+      - commands/mermaid     # loads YAML, generates Mermaid graph/flowchart text

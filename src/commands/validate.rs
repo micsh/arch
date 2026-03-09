@@ -142,13 +142,15 @@ fn validate_container_detail(
     let container_root = root.join(&container.path);
 
     for module in &detail.modules {
-        // Check file exists
-        let file_path = container_root.join(&module.file);
-        if !file_path.exists() {
-            errors.push(format!(
-                "{}/{}: file '{}' does not exist",
-                container.id, module.id, module.file
-            ));
+        // Check all files exist
+        for file in module.all_files() {
+            let file_path = container_root.join(file);
+            if !file_path.exists() {
+                errors.push(format!(
+                    "{}/{}: file '{}' does not exist",
+                    container.id, module.id, file
+                ));
+            }
         }
 
         // Check owns is not empty

@@ -77,6 +77,10 @@ pub struct ContainerDetail {
 pub struct Module {
     pub id: String,
     pub file: String,
+    /// Additional files covered by this module (for multi-project grouping).
+    /// Each file gets the same coverage and drift treatment as `file`.
+    #[serde(default)]
+    pub files: Vec<String>,
     #[serde(default)]
     pub owns: Vec<String>,
     #[serde(default)]
@@ -87,6 +91,17 @@ pub struct Module {
     pub must_not_depend: Vec<String>,
     #[serde(default)]
     pub routes: Option<std::collections::HashMap<String, String>>,
+}
+
+impl Module {
+    /// All files owned by this module (primary + additional).
+    pub fn all_files(&self) -> Vec<&str> {
+        let mut result = vec![self.file.as_str()];
+        for f in &self.files {
+            result.push(f.as_str());
+        }
+        result
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

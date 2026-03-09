@@ -35,16 +35,18 @@ pub fn check() -> Result<CoverageResult, String> {
             .map_err(|e| format!("Invalid {}: {e}", detail_path.display()))?;
 
         for module in &detail.modules {
-            let full_path = root.join(&container.path).join(&module.file);
-            if let Ok(canonical) = full_path.canonicalize() {
-                mapped_files.insert(canonical);
-            }
+            for file in module.all_files() {
+                let full_path = root.join(&container.path).join(file);
+                if let Ok(canonical) = full_path.canonicalize() {
+                    mapped_files.insert(canonical);
+                }
 
-            // If this module's file is a directory owner, mark its directory as covered
-            if schema::is_directory_owner(&module.file) {
-                if let Some(parent) = full_path.parent() {
-                    if let Ok(canonical_dir) = parent.canonicalize() {
-                        covered_dirs.insert(canonical_dir);
+                // If this file is a directory owner, mark its directory as covered
+                if schema::is_directory_owner(file) {
+                    if let Some(parent) = full_path.parent() {
+                        if let Ok(canonical_dir) = parent.canonicalize() {
+                            covered_dirs.insert(canonical_dir);
+                        }
                     }
                 }
             }

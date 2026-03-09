@@ -55,3 +55,9 @@ modules:
     owns: [command-module-exports]
     boundary: "Re-exports only"
     depends_on: []
+
+  - id: mermaid
+    file: mermaid.rs
+    owns: [diagram-generation, container-diagrams, story-flowcharts]
+    boundary: "Read-only — generates Mermaid text from YAML, never modifies files"
+    depends_on: [schema/schema]

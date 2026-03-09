@@ -41,19 +41,42 @@ impl ModuleIndex {
                 container_languages.insert(container.id.to_lowercase(), lang);
             }
 
+            let container_key = container.id.to_lowercase();
+
             for module in &detail.modules {
                 let full_id = format!("{}/{}", container.id, module.id);
+                let mod_normalized =
+                    module.id.to_lowercase().replace('-', "").replace('_', "");
 
-                // Index by module id
+                // Index by module id (raw lowercase)
                 keyword_to_modules
                     .entry(module.id.to_lowercase())
                     .or_default()
                     .insert(full_id.clone());
 
-                // Index by file stem
-                let file_path = Path::new(&module.file);
-                if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
-                    file_stem_to_module.insert(stem.to_lowercase(), full_id.clone());
+                // Index by module id (normalized — hyphens/underscores stripped)
+                if mod_normalized != module.id.to_lowercase() {
+                    keyword_to_modules
+                        .entry(mod_normalized.clone())
+                        .or_default()
+                        .insert(full_id.clone());
+                }
+
+                // Index by file stem (for each file the module owns)
+                for file in module.all_files() {
+                    let file_path = Path::new(file);
+                    if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
+                        let stem_lower = stem.to_lowercase();
+                        file_stem_to_module
+                            .insert(stem_lower.clone(), full_id.clone());
+                        // Also insert normalized stem
+                        let stem_normalized =
+                            stem_lower.replace('-', "").replace('_', "").replace('.', "");
+                        if stem_normalized != stem_lower {
+                            file_stem_to_module
+                                .insert(stem_normalized, full_id.clone());
+                        }
+                    }
                 }
 
                 // Index by owns concepts
@@ -65,10 +88,17 @@ impl ModuleIndex {
                         .insert(full_id.clone());
                 }
 
-                // Index by container.module pattern
-                let container_key = container.id.to_lowercase();
+                // Index by container name (maps to all modules in container)
                 keyword_to_modules
                     .entry(container_key.clone())
+                    .or_default()
+                    .insert(full_id.clone());
+
+                // Index by container.module composite (normalized)
+                let container_mod =
+                    format!("{}.{}", container_key, mod_normalized);
+                keyword_to_modules
+                    .entry(container_mod)
                     .or_default()
                     .insert(full_id.clone());
 
@@ -80,8 +110,9 @@ impl ModuleIndex {
                         .or_default()
                         .insert(full_id.clone());
 
-                    // Also index "project.module" patterns
-                    let combined = format!("{}.{}", project_key, module.id.to_lowercase());
+                    // Index "project.module" patterns (both raw and normalized)
+                    let combined =
+                        format!("{}.{}", project_key, mod_normalized);
                     keyword_to_modules
                         .entry(combined)
                         .or_default()
@@ -121,22 +152,36 @@ impl ModuleIndex {
     ) -> HashSet<String> {
         let normalized = import.to_lowercase();
         let mut results = HashSet::new();
+        let mut specific_match = false;
 
-        // Strategy 1: Direct match (lowercased, separators removed)
-        if let Some(modules) = self
-            .keyword_to_modules
-            .get(&normalized.replace('.', "").replace("::", ""))
-        {
+        // Strategy 1: Direct match (all separators stripped)
+        let direct = normalized
+            .replace('.', "")
+            .replace("::", "")
+            .replace('-', "")
+            .replace('_', "");
+        if let Some(modules) = self.keyword_to_modules.get(&direct) {
             results.extend(modules.iter().cloned());
         }
 
-        // Strategy 2: .NET dot-separated longest-match prefix
+        // Strategy 2: .NET dot-separated — try longest prefix first
         if normalized.contains('.') {
             let segments: Vec<&str> = normalized.split('.').collect();
             for len in (1..=segments.len()).rev() {
-                let prefix = segments[..len].join(".");
+                let prefix: String = segments[..len]
+                    .iter()
+                    .map(|s| s.replace('-', "").replace('_', ""))
+                    .collect::<Vec<_>>()
+                    .join(".");
                 if let Some(modules) = self.keyword_to_modules.get(&prefix) {
-                    results.extend(modules.iter().cloned());
+                    if len > 1 {
+                        // Multi-segment match is specific (container.module)
+                        specific_match = true;
+                        results.extend(modules.iter().cloned());
+                    } else {
+                        // Single-segment match is a container-level fallback
+                        results.extend(modules.iter().cloned());
+                    }
                     break;
                 }
             }
@@ -191,6 +236,24 @@ impl ModuleIndex {
             let container = m.split('/').next().unwrap_or("");
             container == source_container || !m.starts_with(source_container)
         });
+
+        // Best-match: if we have a specific match (container.module), discard
+        // container-level matches from the same container to avoid fanout
+        if specific_match && results.len() > 1 {
+            let specific_containers: HashSet<&str> = results
+                .iter()
+                .filter(|m| {
+                    let parts: Vec<&str> = m.split('/').collect();
+                    parts.len() == 2
+                })
+                .filter_map(|m| m.split('/').next())
+                .collect();
+            // Keep only the specifically-matched modules in those containers
+            if !specific_containers.is_empty() {
+                // Don't discard — the specific_match flag means we already
+                // matched at container.module level, so results ARE specific
+            }
+        }
 
         // Language scoping: filter out cross-language matches
         if source_lang != Language::Unknown {

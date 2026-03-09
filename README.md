@@ -253,6 +253,20 @@ modules:
     depends_on: [common/shared]
 ```
 
+For containers with many sibling projects (e.g., `common/` with 30+ `.csproj` files), use `files:` to group multiple projects under one logical module:
+
+```yaml
+# common.yaml
+modules:
+  - id: shared
+    file: Common.Utilities/Common.Utilities.csproj
+    files:
+      - Common.Extensions/Common.Extensions.csproj
+      - Common.Helpers/Common.Helpers.csproj
+    owns: [utility-functions, extension-methods, helper-classes]
+    boundary: "Shared utilities only — no business logic"
+```
+
 ### `arch mermaid` — Diagram Generation
 
 Generates Mermaid diagrams from your architecture YAML. Output is Mermaid text — paste into any Mermaid-compatible renderer (GitHub, VS Code, Mermaid Live Editor).
@@ -409,6 +423,7 @@ The hook runs `arch validate` and `arch drift`, blocking the commit if violation
 |-------|----------|-------------|
 | `id` | ✅ | Unique within container |
 | `file` | ✅ | Relative path from container root |
+| `files` | | Additional files covered by this module (for multi-project grouping) |
 | `owns` | ✅ | List of concepts this module is responsible for |
 | `boundary` | | What this module should NOT do |
 | `depends_on` | | List of `container/module` references |

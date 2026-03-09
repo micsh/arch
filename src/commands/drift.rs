@@ -52,9 +52,11 @@ pub fn run(json: bool) -> Result<(), String> {
     for container in &arch.containers {
         if let Some(detail) = details.get(&container.id) {
             for module in &detail.modules {
-                let full_path = root.join(&container.path).join(&module.file);
-                if let Ok(canonical) = full_path.canonicalize() {
-                    explicitly_mapped.insert(canonical);
+                for file in module.all_files() {
+                    let full_path = root.join(&container.path).join(file);
+                    if let Ok(canonical) = full_path.canonicalize() {
+                        explicitly_mapped.insert(canonical);
+                    }
                 }
             }
         }
@@ -72,22 +74,25 @@ pub fn run(json: bool) -> Result<(), String> {
         };
 
         for module in &detail.modules {
-            let entry_path = root.join(&container.path).join(&module.file);
-            if !entry_path.exists() {
-                continue;
-            }
+            // Collect files to scan from all module files
+            let mut files_to_scan: Vec<PathBuf> = Vec::new();
 
-            // Skip ignored files
-            let rel_path = format!("{}/{}", container.path, module.file);
-            if schema::is_ignored(&rel_path, &ignore_patterns) {
-                continue;
-            }
+            for file in module.all_files() {
+                let entry_path = root.join(&container.path).join(file);
+                if !entry_path.exists() {
+                    continue;
+                }
 
-            // Collect files to scan: the module file + directory tree for directory-owner modules
-            let mut files_to_scan: Vec<PathBuf> = vec![entry_path.clone()];
+                // Skip ignored files
+                let rel_path = format!("{}/{}", container.path, file);
+                if schema::is_ignored(&rel_path, &ignore_patterns) {
+                    continue;
+                }
 
-            if schema::is_directory_owner(&module.file) {
-                if let Some(dir) = entry_path.parent() {
+                files_to_scan.push(entry_path.clone());
+
+                if schema::is_directory_owner(file) {
+                    if let Some(dir) = entry_path.parent() {
                     let skip_dirs: HashSet<&str> = crate::schema::SKIP_DIRS.iter().copied().collect();
                     for entry in walkdir::WalkDir::new(dir)
                         .into_iter()
@@ -110,6 +115,7 @@ pub fn run(json: bool) -> Result<(), String> {
                         }
                         files_to_scan.push(path);
                     }
+                }
                 }
             }
 
