@@ -10,11 +10,23 @@ For humans, it replaces scattered tribal knowledge with a queryable, version-con
 
 ## Install
 
+**Quick install (recommended):**
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/micsh/arch/main/install.sh | bash
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/micsh/arch/main/install.ps1 | iex
+```
+
+**Or build from source:**
+
 ```bash
 cargo install arch
 ```
 
-Or download a pre-built binary from [GitHub Releases](https://github.com/micsh/arch/releases).
+Pre-built binaries for all platforms are also available from [GitHub Releases](https://github.com/micsh/arch/releases).
 
 ## Quick Start
 
@@ -332,6 +344,43 @@ When multiple AI agents work on a codebase, `arch` provides:
 - **Drift detection** — real-time validation that code matches the architecture
 - **Impact analysis** — stories show which modules a change affects
 - **Self-describing** — the YAML defines its own usage instructions
+
+## CI / Git Hooks
+
+### GitHub Actions
+
+Add architecture validation to your PR pipeline. Copy `examples/arch-ci.yml` to `.github/workflows/` or use this snippet:
+
+```yaml
+# .github/workflows/arch-ci.yml
+name: Architecture Check
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  arch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download arch
+        run: |
+          curl -sL "https://github.com/micsh/arch/releases/latest/download/arch-linux-x64" -o arch
+          chmod +x arch
+      - run: ./arch validate
+      - run: ./arch drift
+      - run: ./arch fitness
+```
+
+### Pre-commit Hook
+
+Validate architecture before every commit. Copy the hook from `examples/pre-commit`:
+
+```bash
+cp examples/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+The hook runs `arch validate` and `arch drift`, blocking the commit if violations are found. Skip temporarily with `git commit --no-verify`.
 
 ## YAML Schema Reference
 

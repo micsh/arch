@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-commit hook for architecture validation.
+# Copy to .git/hooks/pre-commit (or use the install script below).
+#
+# Install:
+#   cp examples/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Checks architecture health before each commit.
+# To skip temporarily: git commit --no-verify
+
+set -e
+
+if ! command -v arch &> /dev/null; then
+    echo "⚠️  arch not found in PATH — skipping architecture check"
+    echo "   Install: https://github.com/micsh/arch/releases"
+    exit 0
+fi
+
+# Only run if architecture/ directory exists
+if [ ! -d "architecture" ]; then
+    exit 0
+fi
+
+echo "🏗️  Checking architecture..."
+
+# Validate YAML integrity
+if ! arch validate --json | grep -q '"valid":true'; then
+    echo "❌ arch validate failed — fix errors before committing"
+    arch validate
+    exit 1
+fi
+
+# Check for dependency drift
+if ! arch drift --json | grep -q '"issues":0'; then
+    echo "❌ arch drift found violations — fix or update architecture YAML"
+    arch drift
+    exit 1
+fi
+
+echo "✅ Architecture checks passed"

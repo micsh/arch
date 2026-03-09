@@ -1,0 +1,35 @@
+# Example GitHub Actions workflow for architecture validation on PRs.
+# Copy this file to .github/workflows/arch-ci.yml in your project.
+#
+# Runs: arch validate → arch drift → arch fitness
+# Fails the PR if any architectural violations are found.
+
+name: Architecture Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  arch:
+    name: Architecture Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download arch
+        run: |
+          curl -sL "https://github.com/micsh/arch/releases/latest/download/arch-linux-x64" -o arch
+          chmod +x arch
+
+      - name: Validate YAML
+        run: ./arch validate
+
+      - name: Check drift
+        run: ./arch drift
+
+      - name: Check fitness rules
+        run: ./arch fitness
+
+      - name: Check stories
+        run: ./arch stories
