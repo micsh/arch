@@ -60,6 +60,30 @@ pub fn check() -> Result<ValidationResult, String> {
         }
     }
 
+    // Check for orphan container YAML files
+    let arch_dir = root.join("architecture");
+    if arch_dir.is_dir() {
+        let known_ids: std::collections::HashSet<String> =
+            arch.containers.iter().map(|c| c.id.clone()).collect();
+        let special_files = ["architecture.yaml", "stories.yaml"];
+        if let Ok(entries) = std::fs::read_dir(&arch_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".yaml") || name.ends_with(".yml") {
+                    if special_files.contains(&name.as_str()) {
+                        continue;
+                    }
+                    let id = name.trim_end_matches(".yaml").trim_end_matches(".yml");
+                    if !known_ids.contains(id) {
+                        warnings.push(format!(
+                            "Orphan file 'architecture/{name}' — no container with id '{id}' in architecture.yaml"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     Ok(ValidationResult {
         errors,
         warnings,
@@ -67,8 +91,22 @@ pub fn check() -> Result<ValidationResult, String> {
     })
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run(json: bool) -> Result<(), String> {
     let result = check()?;
+
+    if json {
+        let output = serde_json::json!({
+            "valid": result.errors.is_empty(),
+            "containers": result.container_count,
+            "errors": result.errors,
+            "warnings": result.warnings,
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        if !result.errors.is_empty() {
+            return Err(format!("{} error(s)", result.errors.len()));
+        }
+        return Ok(());
+    }
 
     if result.errors.is_empty() && result.warnings.is_empty() {
         println!("✅ Architecture is valid ({} containers)", result.container_count);

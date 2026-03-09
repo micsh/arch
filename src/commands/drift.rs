@@ -1,27 +1,21 @@
 use crate::imports;
 use crate::resolve::{is_external_import, ModuleIndex};
 use crate::schema::{self, Architecture, ContainerDetail};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-/// A single drift finding.
+#[derive(Serialize)]
 struct DriftItem {
     module_id: String,
     file: String,
     import_raw: String,
     line_number: usize,
     target_module: String,
-    kind: DriftKind,
+    kind: String,
 }
 
-enum DriftKind {
-    /// Import exists but not declared in depends_on
-    Undeclared,
-    /// Import exists and is in must_not_depend
-    Forbidden,
-}
-
-pub fn run() -> Result<(), String> {
+pub fn run(json: bool) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     let arch_path = crate::schema::find_arch_yaml()?;
 
@@ -89,29 +83,32 @@ pub fn run() -> Result<(), String> {
                 continue;
             }
 
-            // Collect files to scan: the entry point + sibling files for entry-point modules
+            // Collect files to scan: the module file + directory tree for directory-owner modules
             let mut files_to_scan: Vec<PathBuf> = vec![entry_path.clone()];
 
-            if schema::is_entry_point(&module.file) {
+            if schema::is_directory_owner(&module.file) {
                 if let Some(dir) = entry_path.parent() {
-                    if let Ok(entries) = std::fs::read_dir(dir) {
-                        for entry in entries.flatten() {
-                            let path = entry.path();
-                            if !path.is_file() {
-                                continue;
-                            }
-                            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                            if !source_extensions.contains(ext) {
-                                continue;
-                            }
-                            // Skip files explicitly mapped to another module
-                            if let Ok(canonical) = path.canonicalize() {
-                                if explicitly_mapped.contains(&canonical) {
-                                    continue;
-                                }
-                            }
-                            files_to_scan.push(path);
+                    let skip_dirs: HashSet<&str> = crate::schema::SKIP_DIRS.iter().copied().collect();
+                    for entry in walkdir::WalkDir::new(dir)
+                        .into_iter()
+                        .filter_entry(|e| {
+                            !e.file_type().is_dir()
+                                || !skip_dirs.contains(e.file_name().to_str().unwrap_or(""))
+                        })
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().is_file())
+                    {
+                        let path = entry.path().to_path_buf();
+                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if !source_extensions.contains(ext) {
+                            continue;
                         }
+                        if let Ok(canonical) = path.canonicalize() {
+                            if explicitly_mapped.contains(&canonical) {
+                                continue;
+                            }
+                        }
+                        files_to_scan.push(path);
                     }
                 }
             }
@@ -147,10 +144,10 @@ pub fn run() -> Result<(), String> {
                 scanned_count += 1;
                 let file_imports = imports::extract_imports(scan_path, &file_content);
 
-                // Display name: relative to container path
+                // Display name: relative to container path, normalized to forward slashes
                 let display_file = scan_path
                     .strip_prefix(root.join(&container.path))
-                    .map(|p| p.display().to_string())
+                    .map(|p| p.display().to_string().replace('\\', "/"))
                     .unwrap_or_else(|_| module.file.clone());
 
                 for imp in &file_imports {
@@ -184,7 +181,7 @@ pub fn run() -> Result<(), String> {
                                 import_raw: imp.raw.clone(),
                                 line_number: imp.line_number,
                                 target_module: target.clone(),
-                                kind: DriftKind::Forbidden,
+                                kind: "forbidden".to_string(),
                             });
                             continue;
                         }
@@ -204,7 +201,7 @@ pub fn run() -> Result<(), String> {
                                     import_raw: imp.raw.clone(),
                                     line_number: imp.line_number,
                                     target_module: target.clone(),
-                                    kind: DriftKind::Undeclared,
+                                    kind: "undeclared".to_string(),
                                 });
                             }
                         }
@@ -215,6 +212,21 @@ pub fn run() -> Result<(), String> {
     }
 
     // Report
+    if json {
+        let output = serde_json::json!({
+            "scanned": scanned_count,
+            "issues": drift_items.len(),
+            "forbidden": drift_items.iter().filter(|d| d.kind == "forbidden").collect::<Vec<_>>(),
+            "undeclared": drift_items.iter().filter(|d| d.kind == "undeclared").collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        let forbidden_count = drift_items.iter().filter(|d| d.kind == "forbidden").count();
+        if forbidden_count > 0 {
+            return Err(format!("{forbidden_count} forbidden violation(s)"));
+        }
+        return Ok(());
+    }
+
     if drift_items.is_empty() {
         println!(
             "✅ No dependency drift detected ({} modules scanned)",
@@ -223,11 +235,11 @@ pub fn run() -> Result<(), String> {
     } else {
         let forbidden: Vec<&DriftItem> = drift_items
             .iter()
-            .filter(|d| matches!(d.kind, DriftKind::Forbidden))
+            .filter(|d| d.kind == "forbidden")
             .collect();
         let undeclared: Vec<&DriftItem> = drift_items
             .iter()
-            .filter(|d| matches!(d.kind, DriftKind::Undeclared))
+            .filter(|d| d.kind == "undeclared")
             .collect();
 
         if !forbidden.is_empty() {

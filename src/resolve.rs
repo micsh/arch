@@ -1,4 +1,4 @@
-use crate::schema::{Architecture, ContainerDetail};
+use crate::schema::{Architecture, ContainerDetail, Language};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -9,6 +9,8 @@ pub struct ModuleIndex {
     keyword_to_modules: HashMap<String, HashSet<String>>,
     /// Maps file stem (without extension) → "container/module" ID
     file_stem_to_module: HashMap<String, String>,
+    /// Maps container ID → detected language
+    container_languages: HashMap<String, Language>,
 }
 
 impl ModuleIndex {
@@ -19,12 +21,25 @@ impl ModuleIndex {
     ) -> Self {
         let mut keyword_to_modules: HashMap<String, HashSet<String>> = HashMap::new();
         let mut file_stem_to_module: HashMap<String, String> = HashMap::new();
+        let mut container_languages: HashMap<String, Language> = HashMap::new();
 
         for container in &arch.containers {
             let detail = match details.get(&container.id) {
                 Some(d) => d,
                 None => continue,
             };
+
+            // Detect container language from module file extensions
+            let mut lang_votes: HashMap<Language, usize> = HashMap::new();
+            for module in &detail.modules {
+                let lang = crate::schema::detect_language(&module.file);
+                if lang != Language::Unknown {
+                    *lang_votes.entry(lang).or_default() += 1;
+                }
+            }
+            if let Some((&lang, _)) = lang_votes.iter().max_by_key(|(_, v)| **v) {
+                container_languages.insert(container.id.to_lowercase(), lang);
+            }
 
             for module in &detail.modules {
                 let full_id = format!("{}/{}", container.id, module.id);
@@ -78,11 +93,32 @@ impl ModuleIndex {
         ModuleIndex {
             keyword_to_modules,
             file_stem_to_module,
+            container_languages,
         }
     }
 
+    /// Get the detected language for a container.
+    pub fn container_language(&self, container_id: &str) -> Language {
+        self.container_languages
+            .get(&container_id.to_lowercase())
+            .copied()
+            .unwrap_or(Language::Unknown)
+    }
+
     /// Resolve an import string to a set of possible module IDs.
+    /// When `source_lang` is provided, results are filtered to containers
+    /// with a compatible language (prevents Python→C# false positives).
     pub fn resolve(&self, import: &str, source_container: &str) -> HashSet<String> {
+        let source_lang = self.container_language(source_container);
+        self.resolve_with_lang(import, source_container, source_lang)
+    }
+
+    fn resolve_with_lang(
+        &self,
+        import: &str,
+        source_container: &str,
+        source_lang: Language,
+    ) -> HashSet<String> {
         let normalized = import.to_lowercase();
         let mut results = HashSet::new();
 
@@ -155,6 +191,18 @@ impl ModuleIndex {
             let container = m.split('/').next().unwrap_or("");
             container == source_container || !m.starts_with(source_container)
         });
+
+        // Language scoping: filter out cross-language matches
+        if source_lang != Language::Unknown {
+            results.retain(|m| {
+                let container = m.split('/').next().unwrap_or("");
+                if container == source_container {
+                    return true; // same container always allowed
+                }
+                let target_lang = self.container_language(container);
+                target_lang == Language::Unknown || source_lang.is_compatible(target_lang)
+            });
+        }
 
         results
     }

@@ -39,6 +39,12 @@ arch drift
 
 # Do architectural rules hold against the real code?
 arch fitness
+
+# Generate Mermaid container diagram
+arch mermaid
+
+# Any command with JSON output (for tooling / agent consumption)
+arch drift --json
 ```
 
 ## What It Creates
@@ -130,6 +136,10 @@ stories:
 | `arch drift` | Compare declared dependencies against actual code imports |
 | `arch fitness` | Validate architectural rules against actual code |
 | `arch stories` | Verify story flows against actual import connections |
+| `arch mermaid` | Generate Mermaid container dependency diagram |
+| `arch mermaid --stories` | Generate Mermaid flowcharts from stories.yaml |
+
+All commands except `init` and `mermaid` support `--json` for structured output.
 
 ### `arch drift` — Dependency Drift Detection
 
@@ -191,15 +201,100 @@ For each consecutive pair (A→B) in a flow, stories checks that A imports from 
 
 ### Directory-Aware Coverage
 
-When a module's `file:` points to a recognized entry point (`__init__.py`, `mod.rs`, `index.ts`, etc.), all source files in that directory are automatically covered by that module. This means you only need one module per package/directory — use `owns:` for concepts, sub-modules for distinct boundary enforcement:
+When a module's `file:` points to a recognized entry point (`__init__.py`, `mod.rs`, `index.ts`, etc.) or a project file (`.csproj`, `.fsproj`, `.vbproj`), all source files in that directory tree are automatically covered by that module. This means you only need one module per package/directory — use `owns:` for concepts, sub-modules for distinct boundary enforcement:
 
 ```yaml
-# One module covers the entire models/ directory
+# Python: one module covers the entire models/ package and subpackages
 - id: models
   file: models/__init__.py
   owns: [market-snapshot, account-state, trade-decision, order-request]
   boundary: "Pure data structures only — no logic, no I/O"
   depends_on: []
+```
+
+### .NET Monorepo Pattern
+
+For .NET solutions, use one container per `.csproj` project. Point the module's `file:` at the `.csproj` — arch will recursively scan all `.cs`/`.fs` files in the project directory for imports:
+
+```yaml
+# architecture.yaml
+containers:
+  - id: data-processing
+    path: src/DataProcessing
+    project: MyApp.DataProcessing
+    description: Data pipeline and transformation
+    depends_on: [common]
+
+  - id: common
+    path: src/Common
+    project: MyApp.Common
+    description: Shared utilities and types
+    depends_on: []
+```
+
+```yaml
+# data-processing.yaml
+modules:
+  - id: app
+    file: DataProcessing.Application.csproj
+    owns: [pipeline-orchestration, data-transforms]
+    depends_on: [common/shared]
+```
+
+### `arch mermaid` — Diagram Generation
+
+Generates Mermaid diagrams from your architecture YAML. Output is Mermaid text — paste into any Mermaid-compatible renderer (GitHub, VS Code, Mermaid Live Editor).
+
+```bash
+# Container-level dependency diagram with module subgraphs
+arch mermaid
+
+# Story flow diagrams
+arch mermaid --stories
+```
+
+Container diagram example output:
+```
+graph LR
+    backend["REST API\n(5 modules)"]
+    frontend["React UI\n(3 modules)"]
+    frontend --> backend
+```
+
+### `--json` Output
+
+All commands (except `init` and `mermaid`) support `--json` for structured output. Useful for CI pipelines, VS Code extensions, MCP servers, and agent tool integrations:
+
+```bash
+$ arch drift --json
+{
+  "scanned": 12,
+  "issues": 1,
+  "forbidden": [
+    {
+      "module_id": "backend/database",
+      "file": "db/mod.rs",
+      "import_raw": "use crate::auth",
+      "line_number": 3,
+      "target_module": "backend/auth",
+      "kind": "forbidden"
+    }
+  ],
+  "undeclared": []
+}
+
+$ arch owns authentication --json
+{
+  "query": "authentication",
+  "matches": [
+    {
+      "module": "backend/auth",
+      "file": "auth/mod.rs",
+      "owns": "authentication",
+      "boundary": "Auth logic only — no direct DB queries"
+    }
+  ]
+}
 ```
 
 ## Ignoring Files

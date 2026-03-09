@@ -1,15 +1,17 @@
 use crate::imports;
 use crate::schema::{Architecture, ContainerDetail, Rule};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+#[derive(Serialize)]
 struct RuleResult {
     rule_id: String,
     passed: bool,
     violations: Vec<String>,
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run(json: bool) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     let arch_path = crate::schema::find_arch_yaml()?;
 
@@ -78,6 +80,21 @@ pub fn run() -> Result<(), String> {
         .iter()
         .filter(|r| r.passed && !r.violations.is_empty())
         .count();
+
+    if json {
+        let output = serde_json::json!({
+            "total": results.len(),
+            "passed": passed - manual,
+            "failed": failed,
+            "manual": manual,
+            "rules": results,
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        if failed > 0 {
+            return Err(format!("{failed} rule(s) failed"));
+        }
+        return Ok(());
+    }
 
     for r in &results {
         if !r.passed {

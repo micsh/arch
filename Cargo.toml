@@ -1,6 +1,6 @@
 [package]
 name = "arch"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 description = "Architecture-as-code for any codebase. Define, query, and validate your project structure using YAML."
 license = "MIT"
@@ -11,6 +11,7 @@ categories = ["command-line-utilities", "development-tools"]
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_yaml = "0.9"
 walkdir = "2"
 glob = "0.3"

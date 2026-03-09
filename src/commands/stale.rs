@@ -1,8 +1,24 @@
 use super::{validate, coverage};
 
-pub fn run() -> Result<(), String> {
+pub fn run(json: bool) -> Result<(), String> {
     let val = validate::check()?;
     let cov = coverage::check()?;
+
+    if json {
+        let output = serde_json::json!({
+            "valid": val.errors.is_empty(),
+            "containers": val.container_count,
+            "errors": val.errors,
+            "warnings": val.warnings,
+            "unmapped": cov.unmapped,
+            "unmapped_count": cov.unmapped.len(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        if !val.errors.is_empty() {
+            return Err(format!("{} error(s)", val.errors.len()));
+        }
+        return Ok(());
+    }
 
     let has_errors = !val.errors.is_empty();
     let has_warnings = !val.warnings.is_empty();

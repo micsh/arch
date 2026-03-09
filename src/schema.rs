@@ -112,7 +112,7 @@ pub struct Rule {
 
 /// Entry-point filenames that imply directory ownership.
 /// When a module's `file` points to one of these, all source files
-/// in the same directory are considered covered by that module.
+/// in the directory tree are considered covered by that module.
 pub const ENTRY_POINT_FILES: &[&str] = &[
     "__init__.py",
     "mod.rs",
@@ -123,12 +123,42 @@ pub const ENTRY_POINT_FILES: &[&str] = &[
     "index.jsx",
 ];
 
+/// Project file extensions that imply directory ownership.
+/// When a module's `file` points to a project file, all source files
+/// in the directory tree are considered covered by that module.
+pub const PROJECT_FILE_EXTENSIONS: &[&str] = &[
+    "csproj", "fsproj", "vbproj",
+];
+
 /// Check whether a module file path ends with a recognized entry-point filename.
 pub fn is_entry_point(file: &str) -> bool {
     let normalized = file.replace('\\', "/");
     let file_name = normalized.rsplit('/').next().unwrap_or(&normalized);
     ENTRY_POINT_FILES.contains(&file_name)
 }
+
+/// Check whether a module file path ends with a project file extension.
+pub fn is_project_file(file: &str) -> bool {
+    let normalized = file.replace('\\', "/");
+    let file_name = normalized.rsplit('/').next().unwrap_or(&normalized);
+    file_name
+        .rsplit('.')
+        .next()
+        .map(|ext| PROJECT_FILE_EXTENSIONS.contains(&ext))
+        .unwrap_or(false)
+}
+
+/// Check whether a module file implies directory ownership (entry point or project file).
+pub fn is_directory_owner(file: &str) -> bool {
+    is_entry_point(file) || is_project_file(file)
+}
+
+/// Directories to always skip during file scanning (build artifacts, caches, etc.).
+pub const SKIP_DIRS: &[&str] = &[
+    "obj", "bin", "target", "node_modules", ".git", "dist", "build",
+    "__pycache__", ".venv", ".ruff_cache", ".pytest_cache", ".vs",
+    ".mypy_cache", ".tox", "venv",
+];
 
 /// Stories YAML structure
 #[derive(Debug, Serialize, Deserialize)]
@@ -143,4 +173,46 @@ pub struct Story {
     pub description: String,
     #[serde(default)]
     pub flow: Vec<String>,
+}
+
+/// Language family for import resolution scoping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Language {
+    CSharp,
+    FSharp,
+    Rust,
+    Python,
+    TypeScript,
+    Go,
+    Unknown,
+}
+
+impl Language {
+    /// Languages that share a runtime and can import each other.
+    pub fn is_compatible(self, other: Language) -> bool {
+        if self == other {
+            return true;
+        }
+        // C# and F# share the .NET runtime and can reference each other
+        matches!(
+            (self, other),
+            (Language::CSharp, Language::FSharp) | (Language::FSharp, Language::CSharp)
+        )
+    }
+}
+
+/// Detect language from a file path based on extension.
+pub fn detect_language(file: &str) -> Language {
+    let normalized = file.replace('\\', "/");
+    let file_name = normalized.rsplit('/').next().unwrap_or(&normalized);
+    let ext = file_name.rsplit('.').next().unwrap_or("");
+    match ext {
+        "cs" | "csproj" => Language::CSharp,
+        "fs" | "fsx" | "fsproj" => Language::FSharp,
+        "rs" => Language::Rust,
+        "py" => Language::Python,
+        "ts" | "tsx" | "js" | "jsx" => Language::TypeScript,
+        "go" => Language::Go,
+        _ => Language::Unknown,
+    }
 }

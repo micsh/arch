@@ -30,16 +30,18 @@ pub fn run() -> Result<(), String> {
     let arch_dir = root.join("architecture");
     std::fs::create_dir_all(&arch_dir).map_err(|e| e.to_string())?;
 
+    // Scan for containers first (needed for root YAML)
+    let containers = scan_containers(&root, &project_type);
+
     // Generate root architecture.yaml inside architecture/
-    let yaml = generate_root_yaml(project_name);
+    let yaml = generate_root_yaml(project_name, &containers);
     std::fs::write(arch_dir.join("architecture.yaml"), yaml).map_err(|e| e.to_string())?;
 
     // Generate stories.yaml stub
     let stories = generate_stories_stub();
     std::fs::write(arch_dir.join("stories.yaml"), stories).map_err(|e| e.to_string())?;
 
-    // Scan for containers and generate per-container files
-    let containers = scan_containers(&root, &project_type);
+    // Generate per-container detail files
     for (id, path) in &containers {
         let container_yaml = generate_container_yaml(id, path);
         std::fs::write(arch_dir.join(format!("{id}.yaml")), container_yaml)
@@ -57,8 +59,8 @@ pub fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn generate_root_yaml(name: &str) -> String {
-    format!(
+fn generate_root_yaml(name: &str, containers: &[(String, String)]) -> String {
+    let mut yaml = format!(
         r#"guidance: |
   Before making code changes, read the relevant container YAML.
   After changes, update ownership and dependencies if they changed.
@@ -68,18 +70,32 @@ system:
   name: {name}
   description: TODO — describe your project
 
-containers: []
-  # Populated by arch init — edit to add depends_on and descriptions
+containers:
+"#
+    );
 
-rules: []
+    if containers.is_empty() {
+        yaml.push_str("  []\n");
+    } else {
+        for (id, path) in containers {
+            yaml.push_str(&format!(
+                "  - id: {id}\n    path: {path}\n    description: TODO\n    depends_on: []\n\n"
+            ));
+        }
+    }
+
+    yaml.push_str(
+        r#"rules: []
   # Example:
   # - id: core-independence
   #   type: no_dependency
   #   from: core
   #   to: [ui, api]
   #   reason: "Core must not depend on presentation layers"
-"#
-    )
+"#,
+    );
+
+    yaml
 }
 
 fn generate_stories_stub() -> String {

@@ -47,26 +47,30 @@ fn build_dep_graph(
                 files_to_scan.push(entry_path.clone());
             }
 
-            // Entry-point modules: also scan sibling source files in the directory
-            if schema::is_entry_point(&module.file) {
+            // Directory-owner modules: scan all source files in directory tree
+            if schema::is_directory_owner(&module.file) {
                 if let Some(dir) = entry_path.parent() {
-                    if let Ok(entries) = std::fs::read_dir(dir) {
-                        for entry in entries.flatten() {
-                            let path = entry.path();
-                            if !path.is_file() {
-                                continue;
-                            }
-                            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                            if !source_extensions.contains(ext) {
-                                continue;
-                            }
-                            if let Ok(canonical) = path.canonicalize() {
-                                if explicitly_mapped.contains(&canonical) {
-                                    continue;
-                                }
-                            }
-                            files_to_scan.push(path);
+                    let skip_dirs: HashSet<&str> = crate::schema::SKIP_DIRS.iter().copied().collect();
+                    for entry in walkdir::WalkDir::new(dir)
+                        .into_iter()
+                        .filter_entry(|e| {
+                            !e.file_type().is_dir()
+                                || !skip_dirs.contains(e.file_name().to_str().unwrap_or(""))
+                        })
+                        .filter_map(|e| e.ok())
+                        .filter(|e| e.file_type().is_file())
+                    {
+                        let path = entry.path().to_path_buf();
+                        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if !source_extensions.contains(ext) {
+                            continue;
                         }
+                        if let Ok(canonical) = path.canonicalize() {
+                            if explicitly_mapped.contains(&canonical) {
+                                continue;
+                            }
+                        }
+                        files_to_scan.push(path);
                     }
                 }
             }
@@ -98,7 +102,7 @@ fn build_dep_graph(
     actual_deps
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run(json: bool) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
     let arch_path = schema::find_arch_yaml()?;
 
@@ -148,36 +152,47 @@ pub fn run() -> Result<(), String> {
 
     let all_module_ids: HashSet<String> = actual_deps.keys().cloned().collect();
 
-    // Validate each story
+    // Validate each story — collect results
+    let mut story_results: Vec<serde_json::Value> = Vec::new();
     let mut total_stories = 0;
     let mut passed_stories = 0;
 
     for story in &stories.stories {
         total_stories += 1;
         let desc = story.description.trim().replace('\n', " ");
-        let desc_display = if desc.len() > 80 {
-            format!("{}…", &desc[..77])
-        } else {
-            desc
-        };
-        println!("📖 {} — {}", story.id, desc_display);
 
         if story.flow.len() < 2 {
-            println!("  ⚠️  Flow has fewer than 2 steps\n");
+            story_results.push(serde_json::json!({
+                "id": story.id, "description": desc,
+                "status": "warning", "message": "Flow has fewer than 2 steps",
+            }));
+            if !json {
+                let desc_display = if desc.len() > 80 { format!("{}…", &desc[..77]) } else { desc.clone() };
+                println!("📖 {} — {}", story.id, desc_display);
+                println!("  ⚠️  Flow has fewer than 2 steps\n");
+            }
             continue;
         }
 
         // Validate all flow steps reference known modules or containers
-        let mut all_valid = true;
+        let mut unknown_steps: Vec<String> = Vec::new();
         for step in &story.flow {
             let lower = step.to_lowercase();
             if !all_module_ids.contains(&lower) && !container_ids.contains(&lower) {
-                println!("  ❌ Unknown: {step}");
-                all_valid = false;
+                unknown_steps.push(step.clone());
             }
         }
-        if !all_valid {
-            println!();
+        if !unknown_steps.is_empty() {
+            story_results.push(serde_json::json!({
+                "id": story.id, "description": desc,
+                "status": "error", "unknown_steps": unknown_steps,
+            }));
+            if !json {
+                let desc_display = if desc.len() > 80 { format!("{}…", &desc[..77]) } else { desc.clone() };
+                println!("📖 {} — {}", story.id, desc_display);
+                for s in &unknown_steps { println!("  ❌ Unknown: {s}"); }
+                println!();
+            }
             continue;
         }
 
@@ -185,6 +200,12 @@ pub fn run() -> Result<(), String> {
         let mut connections = 0;
         let mut gaps = 0;
         let mut skips = 0;
+        let mut pairs: Vec<serde_json::Value> = Vec::new();
+
+        if !json {
+            let desc_display = if desc.len() > 80 { format!("{}…", &desc[..77]) } else { desc.clone() };
+            println!("📖 {} — {}", story.id, desc_display);
+        }
 
         for pair in story.flow.windows(2) {
             let from = &pair[0];
@@ -192,16 +213,13 @@ pub fn run() -> Result<(), String> {
             let from_lower = from.to_lowercase();
             let to_lower = to.to_lowercase();
 
-            // Skip if either is a container-only reference (no module to verify)
             if !from_lower.contains('/') || !to_lower.contains('/') {
                 skips += 1;
-                println!("  {} → {}  ⏭️  container ref", from, to);
+                pairs.push(serde_json::json!({"from": from, "to": to, "status": "skipped"}));
+                if !json { println!("  {} → {}  ⏭️  container ref", from, to); }
                 continue;
             }
 
-            // Bidirectional check: stories describe runtime flow, which may be
-            // inverse of import direction (event-driven, callback patterns).
-            // A→B in the flow means "A and B are connected", check both directions.
             let has_dep = |from_id: &str, to_id: &str| -> bool {
                 actual_deps
                     .get(from_id)
@@ -214,43 +232,59 @@ pub fn run() -> Result<(), String> {
 
             let forward = has_dep(&from_lower, &to_lower);
             let reverse = has_dep(&to_lower, &from_lower);
-
-            // Same-container modules in compiled languages (.NET) share an assembly
-            // and can reference each other without explicit import statements
             let from_container = from_lower.split('/').next().unwrap_or("");
             let to_container = to_lower.split('/').next().unwrap_or("");
             let same_container = from_container == to_container;
 
             if forward || reverse {
                 connections += 1;
-                println!("  {} → {}  ✅", from, to);
+                pairs.push(serde_json::json!({"from": from, "to": to, "status": "connected"}));
+                if !json { println!("  {} → {}  ✅", from, to); }
             } else if same_container {
                 connections += 1;
-                println!("  {} → {}  ✅ same project", from, to);
+                pairs.push(serde_json::json!({"from": from, "to": to, "status": "same_project"}));
+                if !json { println!("  {} → {}  ✅ same project", from, to); }
             } else {
                 gaps += 1;
-                println!("  {} → {}  ❌ no import found", from, to);
+                pairs.push(serde_json::json!({"from": from, "to": to, "status": "gap"}));
+                if !json { println!("  {} → {}  ❌ no import found", from, to); }
             }
         }
 
         let verified = connections + gaps;
-        if gaps == 0 {
-            passed_stories += 1;
-            if skips > 0 {
-                println!(
-                    "  ✅ {connections}/{verified} verified, {skips} skipped\n"
-                );
+        let passed = gaps == 0;
+        if passed { passed_stories += 1; }
+
+        story_results.push(serde_json::json!({
+            "id": story.id, "description": desc,
+            "status": if passed { "passed" } else { "failed" },
+            "connections": connections, "gaps": gaps, "skips": skips,
+            "pairs": pairs,
+        }));
+
+        if !json {
+            if passed {
+                if skips > 0 {
+                    println!("  ✅ {connections}/{verified} verified, {skips} skipped\n");
+                } else {
+                    println!("  ✅ {connections}/{verified} connections verified\n");
+                }
             } else {
-                println!("  ✅ {connections}/{verified} connections verified\n");
+                println!("  ⚠️  {connections}/{verified} verified, {gaps} gap(s)\n");
             }
-        } else {
-            println!(
-                "  ⚠️  {connections}/{verified} verified, {gaps} gap(s)\n"
-            );
         }
     }
 
-    println!("📊 {passed_stories}/{total_stories} stories fully connected");
+    if json {
+        let output = serde_json::json!({
+            "total": total_stories,
+            "passed": passed_stories,
+            "stories": story_results,
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else {
+        println!("📊 {passed_stories}/{total_stories} stories fully connected");
+    }
 
     if passed_stories < total_stories {
         Err(format!(

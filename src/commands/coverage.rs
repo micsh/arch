@@ -40,8 +40,8 @@ pub fn check() -> Result<CoverageResult, String> {
                 mapped_files.insert(canonical);
             }
 
-            // If this module's file is an entry point, mark its directory as covered
-            if schema::is_entry_point(&module.file) {
+            // If this module's file is a directory owner, mark its directory as covered
+            if schema::is_directory_owner(&module.file) {
                 if let Some(parent) = full_path.parent() {
                     if let Ok(canonical_dir) = parent.canonicalize() {
                         covered_dirs.insert(canonical_dir);
@@ -66,8 +66,7 @@ pub fn check() -> Result<CoverageResult, String> {
             continue;
         }
 
-        let skip_dirs: HashSet<&str> =
-            ["obj", "bin", "target", "node_modules", ".git", "dist", "build", "__pycache__"].into();
+        let skip_dirs: HashSet<&str> = schema::SKIP_DIRS.iter().copied().collect();
 
         for entry in WalkDir::new(&container_path)
             .into_iter()
@@ -87,11 +86,22 @@ pub fn check() -> Result<CoverageResult, String> {
             if source_extensions.contains(ext) {
                 if let Ok(canonical) = path.canonicalize() {
                     if !mapped_files.contains(&canonical) {
-                        // Check if file is in a directory covered by an entry-point module
+                        // Check if file is in a directory (or subdirectory) covered by a directory-owner module
                         let in_covered_dir = path
                             .parent()
                             .and_then(|p| p.canonicalize().ok())
-                            .map(|p| covered_dirs.contains(&p))
+                            .map(|p| {
+                                let mut dir = p.as_path();
+                                loop {
+                                    if covered_dirs.contains(dir) {
+                                        return true;
+                                    }
+                                    match dir.parent() {
+                                        Some(parent) if parent != dir => dir = parent,
+                                        _ => return false,
+                                    }
+                                }
+                            })
                             .unwrap_or(false);
 
                         if !in_covered_dir {
@@ -110,10 +120,16 @@ pub fn check() -> Result<CoverageResult, String> {
     Ok(CoverageResult { unmapped })
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run(json: bool) -> Result<(), String> {
     let result = check()?;
 
-    if result.unmapped.is_empty() {
+    if json {
+        let output = serde_json::json!({
+            "unmapped": result.unmapped,
+            "count": result.unmapped.len(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else if result.unmapped.is_empty() {
         println!("✅ All source files are mapped to modules");
     } else {
         println!("📂 {} unmapped source file(s):\n", result.unmapped.len());
