@@ -55,3 +55,10 @@ stories:
     flow:
       - cli/cli              # parses `arch mermaid` or `arch mermaid --stories`
       - commands/mermaid     # loads YAML, generates Mermaid graph/flowchart text
+
+  - id: user-deep-init
+    description: User scaffolds architecture with inferred modules from project files
+    flow:
+      - cli/cli              # parses `arch init --deep`
+      - scanner/scanner      # detects project type
+      - commands/init        # scans .csproj/pyproject.toml, infers modules + deps

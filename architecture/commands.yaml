@@ -4,7 +4,7 @@
 modules:
   - id: init
     file: init.rs
-    owns: [project-scaffolding, template-generation, directory-scanning]
+    owns: [project-scaffolding, template-generation, directory-scanning, deep-inference, project-reference-parsing, naming-classification]
     boundary: "Scaffolding only — uses scanner for detection, schema for types"
     depends_on: [scanner/scanner, schema/schema]
 
