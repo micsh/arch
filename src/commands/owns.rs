@@ -1,30 +1,17 @@
-use crate::schema::{Architecture, ContainerDetail};
+use crate::context::{ArchContext, print_json};
 
 pub fn run(concept: &str, json: bool) -> Result<(), String> {
-    let root = std::env::current_dir().map_err(|e| e.to_string())?;
-    let arch_path = crate::schema::find_arch_yaml()?;
-
-    let content = std::fs::read_to_string(&arch_path).map_err(|e| e.to_string())?;
-    let arch: Architecture =
-        serde_yaml::from_str(&content).map_err(|e| format!("Invalid architecture.yaml: {e}"))?;
-
+    let ctx = ArchContext::load()?;
     let query = concept.to_lowercase();
     let mut matches: Vec<serde_json::Value> = Vec::new();
 
-    for container in &arch.containers {
-        let detail_path = root
-            .join("architecture")
-            .join(format!("{}.yaml", container.id));
-        if !detail_path.exists() {
-            continue;
-        }
-
-        let detail_content = std::fs::read_to_string(&detail_path).map_err(|e| e.to_string())?;
-        let detail: ContainerDetail = serde_yaml::from_str(&detail_content)
-            .map_err(|e| format!("Invalid {}: {e}", detail_path.display()))?;
+    for container in &ctx.arch.containers {
+        let detail = match ctx.details.get(&container.id) {
+            Some(d) => d,
+            None => continue,
+        };
 
         for module in &detail.modules {
-            // Search owns fields
             for owned in &module.owns {
                 if owned.to_lowercase().contains(&query) {
                     matches.push(serde_json::json!({
@@ -35,7 +22,6 @@ pub fn run(concept: &str, json: bool) -> Result<(), String> {
                     }));
                 }
             }
-            // Also match on module id or file name
             if module.id.to_lowercase().contains(&query)
                 || module.file.to_lowercase().contains(&query)
             {
@@ -58,7 +44,7 @@ pub fn run(concept: &str, json: bool) -> Result<(), String> {
             "query": concept,
             "matches": matches,
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        print_json(&output)?;
         return Ok(());
     }
 

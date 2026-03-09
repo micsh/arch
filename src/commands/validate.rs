@@ -1,4 +1,5 @@
-use crate::schema::{Architecture, ContainerDetail};
+use crate::context::{ArchContext, print_json};
+use crate::schema::ContainerDetail;
 use std::path::Path;
 
 pub struct ValidationResult {
@@ -9,34 +10,24 @@ pub struct ValidationResult {
 
 /// Core validation logic — returns structured results without printing.
 pub fn check() -> Result<ValidationResult, String> {
-    let root = std::env::current_dir().map_err(|e| e.to_string())?;
-    let arch_path = crate::schema::find_arch_yaml()?;
-
-    let content = std::fs::read_to_string(&arch_path).map_err(|e| e.to_string())?;
-    let arch: Architecture =
-        serde_yaml::from_str(&content).map_err(|e| format!("Invalid architecture.yaml: {e}"))?;
-
+    let ctx = ArchContext::load()?;
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
-    // Check system fields
-    if arch.system.name.is_empty() {
+    if ctx.arch.system.name.is_empty() {
         errors.push("system.name is empty".to_string());
     }
 
-    // Check containers
-    let container_ids: Vec<&str> = arch.containers.iter().map(|c| c.id.as_str()).collect();
+    let container_ids: Vec<&str> = ctx.arch.containers.iter().map(|c| c.id.as_str()).collect();
 
-    for container in &arch.containers {
-        // Check path exists
-        if !root.join(&container.path).exists() {
+    for container in &ctx.arch.containers {
+        if !ctx.root.join(&container.path).exists() {
             errors.push(format!(
                 "Container '{}': path '{}' does not exist",
                 container.id, container.path
             ));
         }
 
-        // Check depends_on references valid containers
         for dep in &container.depends_on {
             if !container_ids.contains(&dep.as_str()) {
                 errors.push(format!(
@@ -46,8 +37,7 @@ pub fn check() -> Result<ValidationResult, String> {
             }
         }
 
-        // Check container detail file exists
-        let detail_path = root
+        let detail_path = ctx.root
             .join("architecture")
             .join(format!("{}.yaml", container.id));
         if !detail_path.exists() {
@@ -56,15 +46,15 @@ pub fn check() -> Result<ValidationResult, String> {
                 container.id, container.id
             ));
         } else {
-            validate_container_detail(&root, container, &detail_path, &mut errors)?;
+            validate_container_detail(&ctx.root, container, &detail_path, &mut errors)?;
         }
     }
 
     // Check for orphan container YAML files
-    let arch_dir = root.join("architecture");
+    let arch_dir = ctx.root.join("architecture");
     if arch_dir.is_dir() {
         let known_ids: std::collections::HashSet<String> =
-            arch.containers.iter().map(|c| c.id.clone()).collect();
+            ctx.arch.containers.iter().map(|c| c.id.clone()).collect();
         let special_files = ["architecture.yaml", "stories.yaml"];
         if let Ok(entries) = std::fs::read_dir(&arch_dir) {
             for entry in entries.flatten() {
@@ -87,7 +77,7 @@ pub fn check() -> Result<ValidationResult, String> {
     Ok(ValidationResult {
         errors,
         warnings,
-        container_count: arch.containers.len(),
+        container_count: ctx.arch.containers.len(),
     })
 }
 
@@ -101,7 +91,7 @@ pub fn run(json: bool) -> Result<(), String> {
             "errors": result.errors,
             "warnings": result.warnings,
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        print_json(&output)?;
         if !result.errors.is_empty() {
             return Err(format!("{} error(s)", result.errors.len()));
         }
@@ -142,7 +132,6 @@ fn validate_container_detail(
     let container_root = root.join(&container.path);
 
     for module in &detail.modules {
-        // Check all files exist
         for file in module.all_files() {
             let file_path = container_root.join(file);
             if !file_path.exists() {
@@ -153,7 +142,6 @@ fn validate_container_detail(
             }
         }
 
-        // Check owns is not empty
         if module.owns.is_empty() {
             errors.push(format!(
                 "{}/{}: 'owns' is empty — every module should own at least one concept",

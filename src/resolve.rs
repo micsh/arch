@@ -8,8 +8,9 @@ pub struct ModuleIndex {
     /// Maps normalized keyword → set of "container/module" IDs.
     /// Keys are always normalized via schema::normalize_id().
     keyword_to_modules: HashMap<String, HashSet<String>>,
-    /// Maps normalized file stem → "container/module" ID.
-    file_stem_to_module: HashMap<String, String>,
+    /// Maps normalized file stem → set of "container/module" IDs.
+    /// Uses HashSet to handle stem collisions across containers.
+    file_stem_to_module: HashMap<String, HashSet<String>>,
     /// Maps container ID (lowercase) → detected language.
     container_languages: HashMap<String, Language>,
     /// Set of container IDs (lowercase) that have at least one module.
@@ -23,7 +24,7 @@ impl ModuleIndex {
         details: &HashMap<String, ContainerDetail>,
     ) -> Self {
         let mut keyword_to_modules: HashMap<String, HashSet<String>> = HashMap::new();
-        let mut file_stem_to_module: HashMap<String, String> = HashMap::new();
+        let mut file_stem_to_module: HashMap<String, HashSet<String>> = HashMap::new();
         let mut container_languages: HashMap<String, Language> = HashMap::new();
         let mut active_containers: HashSet<String> = HashSet::new();
 
@@ -50,11 +51,17 @@ impl ModuleIndex {
                 container_languages.insert(container.id.to_lowercase(), lang);
             }
 
-            let container_norm = schema::normalize_id(&container.id);
+            let container_norm = match schema::normalize_id(&container.id) {
+                Some(n) => n,
+                None => continue,
+            };
 
             for module in &detail.modules {
                 let full_id = format!("{}/{}", container.id, module.id);
-                let mod_norm = schema::normalize_id(&module.id);
+                let mod_norm = match schema::normalize_id(&module.id) {
+                    Some(n) => n,
+                    None => continue,
+                };
 
                 // Index by module id (normalized)
                 keyword_to_modules
@@ -66,18 +73,23 @@ impl ModuleIndex {
                 for file in module.all_files() {
                     let file_path = Path::new(file);
                     if let Some(stem) = file_path.file_stem().and_then(|s| s.to_str()) {
-                        let stem_norm = schema::normalize_id(stem);
-                        file_stem_to_module.insert(stem_norm, full_id.clone());
+                        if let Some(stem_norm) = schema::normalize_id(stem) {
+                            file_stem_to_module
+                                .entry(stem_norm)
+                                .or_default()
+                                .insert(full_id.clone());
+                        }
                     }
                 }
 
                 // Index by owns concepts
                 for concept in &module.owns {
-                    let key = schema::normalize_id(concept);
-                    keyword_to_modules
-                        .entry(key)
-                        .or_default()
-                        .insert(full_id.clone());
+                    if let Some(key) = schema::normalize_id(concept) {
+                        keyword_to_modules
+                            .entry(key)
+                            .or_default()
+                            .insert(full_id.clone());
+                    }
                 }
 
                 // Index by container name alone (maps to all modules in container)
@@ -95,18 +107,19 @@ impl ModuleIndex {
 
                 // For .NET: index by project name if present
                 if let Some(ref project) = container.project {
-                    let project_norm = schema::normalize_id(project);
-                    keyword_to_modules
-                        .entry(project_norm.clone())
-                        .or_default()
-                        .insert(full_id.clone());
+                    if let Some(project_norm) = schema::normalize_id(project) {
+                        keyword_to_modules
+                            .entry(project_norm.clone())
+                            .or_default()
+                            .insert(full_id.clone());
 
-                    // Index "project.module" patterns
-                    let proj_mod = format!("{}.{}", project_norm, mod_norm);
-                    keyword_to_modules
-                        .entry(proj_mod)
-                        .or_default()
-                        .insert(full_id.clone());
+                        // Index "project.module" patterns
+                        let proj_mod = format!("{}.{}", project_norm, mod_norm);
+                        keyword_to_modules
+                            .entry(proj_mod)
+                            .or_default()
+                            .insert(full_id.clone());
+                    }
                 }
             }
         }
@@ -147,75 +160,82 @@ impl ModuleIndex {
         let mut broad = HashSet::new();
 
         // Strategy 1: Direct match (all separators stripped → single key)
-        let direct = schema::normalize_id(&normalized.replace('.', "").replace("::", ""));
-        if let Some(modules) = self.keyword_to_modules.get(&direct) {
-            specific.extend(modules.iter().cloned());
+        if let Some(direct) = schema::normalize_id(&normalized.replace('.', "").replace("::", "")) {
+            if let Some(modules) = self.keyword_to_modules.get(&direct) {
+                specific.extend(modules.iter().cloned());
+            }
         }
 
         // Strategy 2: .NET dot-separated — try longest normalized prefix first
         if normalized.contains('.') {
             let norm_dotted = schema::normalize_dotted(&normalized);
-            let segments: Vec<&str> = norm_dotted.split('.').collect();
-            for len in (1..=segments.len()).rev() {
-                let prefix = segments[..len].join(".");
-                if let Some(modules) = self.keyword_to_modules.get(&prefix) {
-                    if len > 1 {
-                        specific.extend(modules.iter().cloned());
-                    } else {
-                        broad.extend(modules.iter().cloned());
+            if !norm_dotted.is_empty() {
+                let segments: Vec<&str> = norm_dotted.split('.').collect();
+                for len in (1..=segments.len()).rev() {
+                    let prefix = segments[..len].join(".");
+                    if let Some(modules) = self.keyword_to_modules.get(&prefix) {
+                        if len > 1 {
+                            specific.extend(modules.iter().cloned());
+                        } else {
+                            broad.extend(modules.iter().cloned());
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         } else if normalized.contains("::") {
             // Rust-style: match each segment
             for segment in normalized.split("::") {
-                let clean = schema::normalize_id(segment);
-                if let Some(modules) = self.keyword_to_modules.get(&clean) {
-                    specific.extend(modules.iter().cloned());
-                }
-                if let Some(module) = self.file_stem_to_module.get(&clean) {
-                    specific.insert(module.clone());
+                if let Some(clean) = schema::normalize_id(segment) {
+                    if let Some(modules) = self.keyword_to_modules.get(&clean) {
+                        specific.extend(modules.iter().cloned());
+                    }
+                    if let Some(modules) = self.file_stem_to_module.get(&clean) {
+                        specific.extend(modules.iter().cloned());
+                    }
                 }
             }
         } else {
             // Single word — direct lookup
-            let clean = schema::normalize_id(&normalized);
-            if let Some(modules) = self.keyword_to_modules.get(&clean) {
-                // Single-word could be a module name (specific) or container name (broad).
-                // Check: if the key matches a container name, it's broad.
-                if self.active_containers.contains(&clean) {
-                    broad.extend(modules.iter().cloned());
-                } else {
+            if let Some(clean) = schema::normalize_id(&normalized) {
+                if let Some(modules) = self.keyword_to_modules.get(&clean) {
+                    // Single-word could be a module name (specific) or container name (broad).
+                    // Check: if the key matches a container name, it's broad.
+                    if self.active_containers.contains(&clean) {
+                        broad.extend(modules.iter().cloned());
+                    } else {
+                        specific.extend(modules.iter().cloned());
+                    }
+                }
+                if let Some(modules) = self.file_stem_to_module.get(&clean) {
                     specific.extend(modules.iter().cloned());
                 }
-            }
-            if let Some(module) = self.file_stem_to_module.get(&clean) {
-                specific.insert(module.clone());
             }
         }
 
         // Strategy 3: Rust crate:: imports
         if normalized.starts_with("crate::") {
             let after_crate = normalized.strip_prefix("crate::").unwrap_or("");
-            let first = schema::normalize_id(after_crate.split("::").next().unwrap_or(""));
-            if let Some(modules) = self.keyword_to_modules.get(&first) {
-                specific.extend(modules.iter().cloned());
-            }
-            if let Some(module) = self.file_stem_to_module.get(&first) {
-                specific.insert(module.clone());
+            if let Some(first) = after_crate.split("::").next().and_then(|s| schema::normalize_id(s)) {
+                if let Some(modules) = self.keyword_to_modules.get(&first) {
+                    specific.extend(modules.iter().cloned());
+                }
+                if let Some(modules) = self.file_stem_to_module.get(&first) {
+                    specific.extend(modules.iter().cloned());
+                }
             }
         }
 
         // Strategy 4: Rust super:: imports
         if normalized.starts_with("super::") {
             let after_super = normalized.strip_prefix("super::").unwrap_or("");
-            let first = schema::normalize_id(after_super.split("::").next().unwrap_or(""));
-            if let Some(modules) = self.keyword_to_modules.get(&first) {
-                specific.extend(modules.iter().cloned());
-            }
-            if let Some(module) = self.file_stem_to_module.get(&first) {
-                specific.insert(module.clone());
+            if let Some(first) = after_super.split("::").next().and_then(|s| schema::normalize_id(s)) {
+                if let Some(modules) = self.keyword_to_modules.get(&first) {
+                    specific.extend(modules.iter().cloned());
+                }
+                if let Some(modules) = self.file_stem_to_module.get(&first) {
+                    specific.extend(modules.iter().cloned());
+                }
             }
         }
 
@@ -506,16 +526,30 @@ mod tests {
 
     #[test]
     fn test_normalize_id_consistency() {
-        assert_eq!(schema::normalize_id("Durable-Tasks"), "durabletasks");
-        assert_eq!(schema::normalize_id("auto_segmentation"), "autosegmentation");
-        assert_eq!(schema::normalize_id("DurableTasks"), "durabletasks");
-        assert_eq!(schema::normalize_id("my-module_v2"), "mymodulev2");
+        assert_eq!(schema::normalize_id("Durable-Tasks"), Some("durabletasks".to_string()));
+        assert_eq!(schema::normalize_id("auto_segmentation"), Some("autosegmentation".to_string()));
+        assert_eq!(schema::normalize_id("DurableTasks"), Some("durabletasks".to_string()));
+        assert_eq!(schema::normalize_id("my-module_v2"), Some("mymodulev2".to_string()));
+    }
+
+    #[test]
+    fn test_normalize_id_edge_cases() {
+        // Empty strings and all-separator strings should return None
+        assert_eq!(schema::normalize_id(""), None);
+        assert_eq!(schema::normalize_id("---"), None);
+        assert_eq!(schema::normalize_id("___"), None);
+        assert_eq!(schema::normalize_id("-_-_-"), None);
+        // Single char should work
+        assert_eq!(schema::normalize_id("a"), Some("a".to_string()));
     }
 
     #[test]
     fn test_normalize_dotted() {
         assert_eq!(schema::normalize_dotted("Common.Durable-Tasks"), "common.durabletasks");
         assert_eq!(schema::normalize_dotted("MyApp.Data_Processing"), "myapp.dataprocessing");
+        // Empty segments dropped
+        assert_eq!(schema::normalize_dotted("a...b"), "a.b");
+        assert_eq!(schema::normalize_dotted("---"), "");
     }
 
     #[test]

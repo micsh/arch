@@ -216,20 +216,22 @@ impl Language {
     }
 }
 
-/// Normalize an identifier for matching: lowercase, strip hyphens, underscores, dots.
+/// Normalize an identifier for matching: lowercase, strip hyphens, underscores.
 /// Used consistently in index building AND resolution lookups.
-/// e.g., "Durable-Tasks" → "durabletasks", "auto_segmentation" → "autosegmentation"
-pub fn normalize_id(s: &str) -> String {
-    s.to_lowercase()
-        .replace('-', "")
-        .replace('_', "")
+/// Returns None for empty/whitespace-only input or input that normalizes to empty
+/// (e.g., "---", "___").
+/// e.g., "Durable-Tasks" → Some("durabletasks"), "auto_segmentation" → Some("autosegmentation")
+pub fn normalize_id(s: &str) -> Option<String> {
+    let result = s.to_lowercase().replace('-', "").replace('_', "");
+    if result.is_empty() { None } else { Some(result) }
 }
 
 /// Normalize for composite keys (dots preserved as separators, segments normalized).
+/// Drops empty segments (e.g., "a...b" → "a.b", not "a...b").
 /// e.g., "Common.Durable-Tasks" → "common.durabletasks"
 pub fn normalize_dotted(s: &str) -> String {
     s.split('.')
-        .map(|seg| normalize_id(seg))
+        .filter_map(|seg| normalize_id(seg))
         .collect::<Vec<_>>()
         .join(".")
 }

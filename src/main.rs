@@ -3,6 +3,7 @@ mod schema;
 mod scanner;
 mod imports;
 mod resolve;
+pub mod context;
 
 use clap::{Parser, Subcommand};
 
@@ -72,7 +73,9 @@ fn main() {
     if let Err(e) = result {
         if json {
             let err = serde_json::json!({ "error": e });
-            println!("{}", serde_json::to_string_pretty(&err).unwrap());
+            if let Err(je) = context::print_json(&err) {
+                eprintln!("Error: {e}\n(JSON serialization also failed: {je})");
+            }
         } else {
             eprintln!("Error: {e}");
         }

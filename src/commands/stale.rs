@@ -1,4 +1,5 @@
 use super::{validate, coverage};
+use crate::context::print_json;
 
 pub fn run(json: bool) -> Result<(), String> {
     let val = validate::check()?;
@@ -13,7 +14,7 @@ pub fn run(json: bool) -> Result<(), String> {
             "unmapped": cov.unmapped,
             "unmapped_count": cov.unmapped.len(),
         });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        print_json(&output)?;
         if !val.errors.is_empty() {
             return Err(format!("{} error(s)", val.errors.len()));
         }
@@ -29,7 +30,6 @@ pub fn run(json: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    // Validation errors
     for e in &val.errors {
         println!("❌ {e}");
     }
@@ -37,7 +37,6 @@ pub fn run(json: bool) -> Result<(), String> {
         println!("⚠️  {w}");
     }
 
-    // Unmapped files
     if has_unmapped {
         println!("📂 {} unmapped source file(s):", cov.unmapped.len());
         for f in &cov.unmapped {

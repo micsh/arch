@@ -1,7 +1,9 @@
 guidance: |
   arch is a single-binary CLI tool. All domain types live in schema.rs.
-  Each command is a standalone module under src/commands/ — commands only share code
-  through extracted check() functions. The stale command composes validate + coverage.
+  Shared loading and scanning infrastructure lives in context.rs (ArchContext).
+  Each command is a standalone module under src/commands/ — commands share code
+  through ArchContext (YAML loading, file walking) and extracted check() functions.
+  The stale command composes validate + coverage.
   The scanner detects project type by file presence, not content parsing.
   Before adding a command, check if an existing one already covers the use case.
 
@@ -14,13 +16,19 @@ containers:
     project: arch
     path: src
     description: CLI entry point, argument parsing, command dispatch
-    depends_on: [schema, scanner, commands, imports]
+    depends_on: [schema, scanner, commands, imports, context]
 
   - id: schema
     project: arch
     path: src
     description: YAML type definitions shared by all commands
     depends_on: []
+
+  - id: context
+    project: arch
+    path: src
+    description: Shared architecture loading — ArchContext, file walking, JSON output
+    depends_on: [schema, resolve]
 
   - id: scanner
     project: arch
@@ -44,32 +52,38 @@ containers:
     project: arch
     path: src/commands
     description: Subcommand implementations — each is self-contained
-    depends_on: [schema, imports, resolve]
+    depends_on: [schema, imports, resolve, context]
 
 rules:
   - id: schema-independence
     type: no_dependency
     from: schema
-    to: [commands, scanner, cli]
+    to: [commands, scanner, cli, context]
     reason: "Schema types are pure data — no logic dependencies"
 
   - id: scanner-independence
     type: no_dependency
     from: scanner
-    to: [commands, cli]
+    to: [commands, cli, context]
     reason: "Scanner is a leaf utility — only used by init command"
 
   - id: imports-independence
     type: no_dependency
     from: imports
-    to: [commands, scanner, cli, resolve]
+    to: [commands, scanner, cli, resolve, context]
     reason: "Import extraction is a pure leaf utility — no logic dependencies"
 
   - id: resolve-independence
     type: no_dependency
     from: resolve
-    to: [commands, scanner, cli, imports]
+    to: [commands, scanner, cli, imports, context]
     reason: "Resolution is a shared utility — depends only on schema types"
+
+  - id: context-independence
+    type: no_dependency
+    from: context
+    to: [commands, scanner, cli, imports]
+    reason: "Context is a shared loader — depends only on schema and resolve"
 
   - id: commands-isolation
     type: boundary
