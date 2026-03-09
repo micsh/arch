@@ -62,22 +62,21 @@ pub fn run(json: bool) -> Result<(), String> {
                         continue;
                     }
 
-                    // Python absolute intra-package imports: if the leading token
-                    // matches one of the module's own concepts, it's a self-reference
-                    if imp.raw.contains('.') || imp.raw.contains("::") {
-                        let leading = imp.raw.split(['.', ':']).next().unwrap_or("").to_lowercase();
-                        let leading = leading.replace('-', "").replace('_', "");
-                        if !leading.is_empty() {
-                            let is_self_ref = module.owns.iter().any(|o| {
-                                let own_norm = o.replace('-', "").replace('_', "").to_lowercase();
-                                own_norm == leading
-                            }) || {
-                                let mod_norm = module.id.replace('-', "").replace('_', "").to_lowercase();
-                                mod_norm == leading
-                            };
-                            if is_self_ref {
-                                continue;
-                            }
+                    // Python/general intra-package self-imports: if the leading token
+                    // (or the entire bare import) matches the module's owns or ID,
+                    // it's a self-reference — skip it
+                    let leading = imp.raw.split(['.', ':']).next().unwrap_or("").to_lowercase();
+                    let leading_norm = leading.replace('-', "").replace('_', "");
+                    if !leading_norm.is_empty() {
+                        let is_self_ref = module.owns.iter().any(|o| {
+                            let own_norm = o.replace('-', "").replace('_', "").to_lowercase();
+                            own_norm == leading_norm
+                        }) || {
+                            let mod_norm = module.id.replace('-', "").replace('_', "").to_lowercase();
+                            mod_norm == leading_norm
+                        };
+                        if is_self_ref {
+                            continue;
                         }
                     }
 
