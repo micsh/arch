@@ -62,6 +62,25 @@ pub fn run(json: bool) -> Result<(), String> {
                         continue;
                     }
 
+                    // Python absolute intra-package imports: if the leading token
+                    // matches one of the module's own concepts, it's a self-reference
+                    if imp.raw.contains('.') || imp.raw.contains("::") {
+                        let leading = imp.raw.split(['.', ':']).next().unwrap_or("").to_lowercase();
+                        let leading = leading.replace('-', "").replace('_', "");
+                        if !leading.is_empty() {
+                            let is_self_ref = module.owns.iter().any(|o| {
+                                let own_norm = o.replace('-', "").replace('_', "").to_lowercase();
+                                own_norm == leading
+                            }) || {
+                                let mod_norm = module.id.replace('-', "").replace('_', "").to_lowercase();
+                                mod_norm == leading
+                            };
+                            if is_self_ref {
+                                continue;
+                            }
+                        }
+                    }
+
                     let resolved = index.resolve(&imp.raw, &container.id);
                     if resolved.is_empty() {
                         continue;
@@ -92,62 +111,65 @@ fn check_drift(
     imp: &imports::Import,
     drift_items: &mut Vec<DriftItem>,
 ) {
-    // Detect broad fan-out: all resolved targets in same foreign container
-    // → collapse to single container-level violation
-    let cross_container: Vec<&String> = resolved.iter()
-        .filter(|t| {
-            let tl = t.to_lowercase();
-            tl != self_id && t.split('/').next().unwrap_or("") != container_id
-        })
-        .collect();
+    use std::collections::HashMap;
 
-    if cross_container.len() > 1 {
-        let containers: HashSet<&str> = cross_container.iter()
-            .map(|t| t.split('/').next().unwrap_or(""))
-            .collect();
-        if containers.len() == 1 {
-            // All targets in one foreign container — this is broad fan-out
-            let target_container = *containers.iter().next().unwrap();
-            let target_lower = target_container.to_lowercase();
+    let source_id = format!("{}/{}", container_id, module.id);
 
-            if forbidden_deps.iter().any(|d| d == &target_lower || cross_container.iter().any(|t| t.to_lowercase() == *d)) {
+    // Group cross-container targets by their container
+    let mut by_container: HashMap<String, Vec<String>> = HashMap::new();
+    for target in resolved {
+        let target_lower = target.to_lowercase();
+        if target_lower == self_id {
+            continue;
+        }
+        let target_container = target_lower.split('/').next().unwrap_or("").to_string();
+        if target_container == container_id.to_lowercase() {
+            continue; // same container — not a drift violation
+        }
+        by_container.entry(target_container).or_default().push(target.clone());
+    }
+
+    for (target_container, targets) in &by_container {
+        // Broad fan-out: multiple targets in one foreign container from a single import
+        // → collapse to single container-level violation with [broad match] tag
+        if targets.len() > 1 {
+            let any_forbidden = forbidden_deps.contains(target_container)
+                || targets.iter().any(|t| forbidden_deps.contains(&t.to_lowercase()));
+
+            if any_forbidden {
                 drift_items.push(DriftItem {
-                    module_id: format!("{}/{}", container_id, module.id),
+                    module_id: source_id.clone(),
                     file: display_file.to_string(),
                     import_raw: imp.raw.clone(),
                     line_number: imp.line_number,
                     target_module: format!("{} [broad match]", target_container),
                     kind: "forbidden".to_string(),
                 });
-            } else if !declared_deps.iter().any(|d| target_lower.starts_with(d.as_str()))
-                && !container_deps.contains(target_container)
-            {
-                drift_items.push(DriftItem {
-                    module_id: format!("{}/{}", container_id, module.id),
-                    file: display_file.to_string(),
-                    import_raw: imp.raw.clone(),
-                    line_number: imp.line_number,
-                    target_module: format!("{} [broad match]", target_container),
-                    kind: "undeclared".to_string(),
-                });
+            } else {
+                let module_declared = declared_deps.iter()
+                    .any(|d| target_container.starts_with(d.as_str()));
+                let container_level_declared = container_deps.contains(target_container.as_str());
+                if !module_declared && !container_level_declared {
+                    drift_items.push(DriftItem {
+                        module_id: source_id.clone(),
+                        file: display_file.to_string(),
+                        import_raw: imp.raw.clone(),
+                        line_number: imp.line_number,
+                        target_module: format!("{} [broad match]", target_container),
+                        kind: "undeclared".to_string(),
+                    });
+                }
             }
-            return;
-        }
-    }
-
-    // Normal path: check each target individually
-    for target in resolved {
-        let target_lower = target.to_lowercase();
-        if target_lower == self_id {
             continue;
         }
 
-        let target_container = target_lower.split('/').next().unwrap_or("");
-        let is_same_container = target_container == container_id.to_lowercase();
+        // Single target in this foreign container — check individually
+        let target = &targets[0];
+        let target_lower = target.to_lowercase();
 
         if forbidden_deps.contains(&target_lower) {
             drift_items.push(DriftItem {
-                module_id: format!("{}/{}", container_id, module.id),
+                module_id: source_id.clone(),
                 file: display_file.to_string(),
                 import_raw: imp.raw.clone(),
                 line_number: imp.line_number,
@@ -157,14 +179,14 @@ fn check_drift(
             continue;
         }
 
-        if !is_same_container && !declared_deps.contains(&target_lower) {
+        if !declared_deps.contains(&target_lower) {
             let module_declared = declared_deps
                 .iter()
                 .any(|d| target_lower.starts_with(d.as_str()));
-            let container_level_declared = container_deps.contains(target_container);
+            let container_level_declared = container_deps.contains(target_container.as_str());
             if !module_declared && !container_level_declared {
                 drift_items.push(DriftItem {
-                    module_id: format!("{}/{}", container_id, module.id),
+                    module_id: source_id.clone(),
                     file: display_file.to_string(),
                     import_raw: imp.raw.clone(),
                     line_number: imp.line_number,

@@ -244,7 +244,8 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
         return generate_container_yaml(id, rel_path);
     }
 
-    // Deduplicate: if two modules get the same ID, append a numeric suffix
+    // Deduplicate: use parent-prefix compound naming (e.g., durable-tasks--in-memory)
+    // instead of opaque numeric suffixes (in-memory-2)
     let mut id_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for m in &modules {
         *id_counts.entry(m.id.clone()).or_default() += 1;
@@ -254,13 +255,41 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
         .map(|(id, _)| id)
         .collect();
     if !duplicated_ids.is_empty() {
-        let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for m in &mut modules {
             if duplicated_ids.contains(&m.id) {
-                let n = seen.entry(m.id.clone()).or_default();
-                *n += 1;
-                if *n > 1 {
-                    m.id = format!("{}-{}", m.id, n);
+                // Use the project stem to build a parent-prefixed compound ID
+                let stem = std::path::Path::new(&m.file)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("");
+                let segments: Vec<&str> = stem.split('.').collect();
+                if segments.len() >= 2 {
+                    // Use parent.child → parent--child (e.g., DurableTasks.InMemory → durable-tasks--in-memory)
+                    let parent = pascal_to_kebab(segments[segments.len() - 2]);
+                    let child = pascal_to_kebab(segments[segments.len() - 1]);
+                    m.id = format!("{}--{}", parent, child);
+                }
+            }
+        }
+
+        // Final safety net: if compound naming still produces duplicates, append numeric suffix
+        let mut final_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for m in &modules {
+            *final_counts.entry(m.id.clone()).or_default() += 1;
+        }
+        let still_duped: std::collections::HashSet<String> = final_counts.into_iter()
+            .filter(|(_, count)| *count > 1)
+            .map(|(id, _)| id)
+            .collect();
+        if !still_duped.is_empty() {
+            let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            for m in &mut modules {
+                if still_duped.contains(&m.id) {
+                    let n = seen.entry(m.id.clone()).or_default();
+                    *n += 1;
+                    if *n > 1 {
+                        m.id = format!("{}-{}", m.id, n);
+                    }
                 }
             }
         }
@@ -345,8 +374,8 @@ fn infer_dotnet_module(container_dir: &Path, proj_path: &Path) -> Option<Inferre
     let rel = proj_path.strip_prefix(container_dir).ok()?;
     let file = rel.to_string_lossy().replace('\\', "/");
 
-    // Skip template/placeholder projects (paths with {variable} tokens)
-    if file.contains('{') && file.contains('}') {
+    // Skip template/placeholder projects (paths with {variable} or __variable__ tokens)
+    if (file.contains('{') && file.contains('}')) || file.contains("__") {
         return None;
     }
 
