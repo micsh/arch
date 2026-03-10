@@ -1,4 +1,5 @@
 mod commands;
+mod depgraph;
 mod schema;
 mod scanner;
 mod imports;

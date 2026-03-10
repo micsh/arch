@@ -1,58 +1,6 @@
-use crate::context::{self, ArchContext, print_json};
-use crate::imports;
-use crate::resolve::{is_external_import, ModuleIndex};
+use crate::context::{ArchContext, print_json};
+use crate::depgraph;
 use std::collections::{HashMap, HashSet};
-
-/// Build the actual dependency graph from source files.
-/// Returns: module_id (lowercase) → set of module_ids it imports from.
-fn build_dep_graph(
-    ctx: &ArchContext,
-    index: &ModuleIndex,
-) -> HashMap<String, HashSet<String>> {
-    let explicitly_mapped = ctx.collect_mapped_files();
-    let source_ext: HashSet<&str> = context::SOURCE_EXTENSIONS.iter().copied().collect();
-
-    let mut actual_deps: HashMap<String, HashSet<String>> = HashMap::new();
-
-    for container in &ctx.arch.containers {
-        let detail = match ctx.details.get(&container.id) {
-            Some(d) => d,
-            None => continue,
-        };
-
-        for module in &detail.modules {
-            let full_id = format!("{}/{}", container.id, module.id).to_lowercase();
-            let files_to_scan = context::walk_module_files(
-                &ctx.root, &container.path, module,
-                &explicitly_mapped, &source_ext, &ctx.ignore_patterns,
-            );
-
-            let mut deps = HashSet::new();
-            for scan_path in &files_to_scan {
-                let file_content = match std::fs::read_to_string(scan_path) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                let file_imports = imports::extract_imports(scan_path, &file_content);
-                for imp in &file_imports {
-                    if is_external_import(&imp.raw) {
-                        continue;
-                    }
-                    let resolved = index.resolve_all(&imp.raw, &container.id);
-                    for target in &resolved {
-                        let target_lower = target.to_lowercase();
-                        if target_lower != full_id {
-                            deps.insert(target_lower);
-                        }
-                    }
-                }
-            }
-            actual_deps.insert(full_id, deps);
-        }
-    }
-
-    actual_deps
-}
 
 pub fn run(json: bool) -> Result<(), String> {
     let ctx = ArchContext::load()?;
@@ -71,7 +19,7 @@ pub fn run(json: bool) -> Result<(), String> {
     }
 
     let index = ctx.build_index();
-    let actual_deps = build_dep_graph(&ctx, &index);
+    let actual_deps = depgraph::build_dep_graph(&ctx, &index, true);
 
     let container_ids: HashSet<String> = ctx.arch.containers
         .iter().map(|c| c.id.to_lowercase()).collect();

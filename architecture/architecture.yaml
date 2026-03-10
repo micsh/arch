@@ -16,7 +16,7 @@ containers:
     project: arch
     path: src
     description: CLI entry point, argument parsing, command dispatch
-    depends_on: [schema, scanner, commands, imports, context]
+    depends_on: [schema, scanner, commands, imports, context, depgraph]
 
   - id: schema
     project: arch
@@ -48,11 +48,17 @@ containers:
     description: Shared import resolution — ModuleIndex and external import detection
     depends_on: [schema]
 
+  - id: depgraph
+    project: arch
+    path: src
+    description: Shared dep-graph builder — scans source imports and resolves module dependencies
+    depends_on: [context, imports, resolve]
+
   - id: commands
     project: arch
     path: src/commands
     description: Subcommand implementations — each is self-contained
-    depends_on: [schema, imports, resolve, context]
+    depends_on: [schema, imports, resolve, context, depgraph]
 
 rules:
   - id: schema-independence

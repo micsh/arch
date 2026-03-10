@@ -118,24 +118,11 @@ fn render_c4(ctx: &ArchContext) -> Result<String, String> {
         let name = &container.id;
         let desc = container.description.as_deref().unwrap_or("");
         let tech = container.project.as_deref().unwrap_or("");
-        if ctx
-            .details
-            .get(&container.id)
-            .map(|d| !d.modules.is_empty())
-            .unwrap_or(false)
-        {
-            writeln!(
-                out,
-                "        Container({id}, \"{name}\", \"{tech}\", \"{desc}\")"
-            )
-            .unwrap();
-        } else {
-            writeln!(
-                out,
-                "        Container({id}, \"{name}\", \"{tech}\", \"{desc}\")"
-            )
-            .unwrap();
-        }
+        writeln!(
+            out,
+            "        Container({id}, \"{name}\", \"{tech}\", \"{desc}\")"
+        )
+        .unwrap();
     }
     writeln!(out, "    }}").unwrap();
     writeln!(out).unwrap();
@@ -269,7 +256,15 @@ fn find_outside_code_blocks(content: &str, marker: &str) -> Option<usize> {
                 return Some(offset + pos);
             }
         }
-        offset += line.len() + 1; // +1 for newline
+        // Advance by the actual byte length of this line in the original content,
+        // accounting for both LF and CRLF line endings. content.lines() strips \r\n
+        // to give the logical line, so line.len() never includes \r. Using find('\n')
+        // on the original slice gives the correct advance for both formats.
+        let advance = content[offset..]
+            .find('\n')
+            .map(|n| n + 1)             // skip past '\n'; '\r' (if any) is included in n
+            .unwrap_or(content[offset..].len()); // last line, no trailing newline
+        offset += advance;
     }
     None
 }
@@ -278,4 +273,32 @@ fn sanitize_id(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_outside_code_blocks_lf() {
+        let content = "line one\n<!-- marker -->\nline three\n";
+        let pos = find_outside_code_blocks(content, "<!-- marker -->");
+        assert_eq!(pos, Some(9), "LF: marker should be at byte 9");
+    }
+
+    #[test]
+    fn test_find_outside_code_blocks_crlf() {
+        // CRLF content: each newline is \r\n (2 bytes instead of 1)
+        let content = "line one\r\n<!-- marker -->\r\nline three\r\n";
+        let pos = find_outside_code_blocks(content, "<!-- marker -->");
+        assert_eq!(pos, Some(10), "CRLF: marker should be at byte 10 (after 'line one\\r\\n')");
+    }
+
+    #[test]
+    fn test_find_outside_code_blocks_skips_code_fence() {
+        let content = "```\n<!-- marker -->\n```\n<!-- marker -->\n";
+        let pos = find_outside_code_blocks(content, "<!-- marker -->");
+        // "```\n" = 4 bytes, "<!-- marker -->\n" = 16 bytes, "```\n" = 4 bytes → second marker at 24
+        assert_eq!(pos, Some(24), "Should skip marker inside code block");
+    }
 }

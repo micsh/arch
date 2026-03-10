@@ -97,6 +97,9 @@ fn extract_rust(content: &str) -> Vec<Import> {
         .filter_map(|(i, line)| {
             let trimmed = line.trim();
 
+            // ASSUMPTION: Rust raw string tracking only handles single-# markers (r#"..."#).
+            // IF INVALID (multi-hatch raw strings r##"..."## are present in scanned code): implement
+            // a depth counter tracking the number of '#' markers to correctly skip nested raw strings.
             // Track raw string boundaries
             if trimmed.contains("r#\"") {
                 in_raw_string = true;

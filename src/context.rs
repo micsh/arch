@@ -5,6 +5,20 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+/// Find architecture.yaml — checks architecture/architecture.yaml first, then root.
+pub fn find_arch_yaml() -> Result<PathBuf, String> {
+    let root = std::env::current_dir().map_err(|e| e.to_string())?;
+    let nested = root.join("architecture").join("architecture.yaml");
+    if nested.exists() {
+        return Ok(nested);
+    }
+    let flat = root.join("architecture.yaml");
+    if flat.exists() {
+        return Ok(flat);
+    }
+    Err("architecture.yaml not found. Run `arch init` first.".into())
+}
+
 /// File extensions that have import parsers (used by drift, stories, fitness).
 pub const SOURCE_EXTENSIONS: &[&str] = &[
     "rs", "fs", "fsx", "cs", "ts", "tsx", "js", "jsx", "py", "go", "java", "kt",
@@ -30,7 +44,7 @@ impl ArchContext {
     /// Load architecture YAML and all container details.
     pub fn load() -> Result<Self, String> {
         let root = std::env::current_dir().map_err(|e| e.to_string())?;
-        let arch_path = schema::find_arch_yaml()?;
+        let arch_path = find_arch_yaml()?;
 
         let content = std::fs::read_to_string(&arch_path).map_err(|e| e.to_string())?;
         let arch: Architecture =

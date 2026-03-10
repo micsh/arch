@@ -317,7 +317,16 @@ pub fn is_external_import(import: &str) -> bool {
         return true;
     }
 
+    // Node.js 'node:' prefix form (e.g. node:fs, node:path) — introduced in Node 14/18.
+    // Matches regardless of whether the bare name is in the builtins list.
+    if lower.starts_with("node:") {
+        return true;
+    }
+
     // Python standard library (common ones)
+    // ASSUMPTION: Python stdlib list is frozen at ~Python 3.8.
+    // IF INVALID (newer stdlib modules flagged as false-positive drift): extend python_std array.
+    // Notable omissions: 'tomllib' (3.11+), 'graphlib' (3.9+), 'zoneinfo' (3.9+).
     let python_std = [
         "os",
         "sys",
@@ -361,6 +370,9 @@ pub fn is_external_import(import: &str) -> bool {
     }
 
     // Node.js built-ins
+    // ASSUMPTION: node_builtins covers Node.js LTS built-ins as of Node 18.
+    // The 'node:' prefix form (e.g. 'node:fs') is handled by the prefix check above.
+    // IF INVALID: extend node_builtins array or update the prefix check.
     let node_builtins = [
         "fs",
         "path",

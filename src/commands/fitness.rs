@@ -1,6 +1,6 @@
-use crate::context::{self, ArchContext, print_json};
+use crate::context::{ArchContext, print_json};
+use crate::depgraph;
 use crate::imports;
-use crate::resolve::{is_external_import, ModuleIndex};
 use crate::schema::{Architecture, ContainerDetail, Rule};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -22,7 +22,7 @@ pub fn run(json: bool) -> Result<(), String> {
 
     // Use the shared ModuleIndex instead of a parallel resolver
     let index = ctx.build_index();
-    let actual_deps = build_actual_deps(&ctx, &index);
+    let actual_deps = depgraph::build_dep_graph(&ctx, &index, false);
 
     let mut results: Vec<RuleResult> = Vec::new();
 
@@ -34,6 +34,9 @@ pub fn run(json: bool) -> Result<(), String> {
             "no_import_from" => {
                 results.push(evaluate_no_import_from(rule, &ctx));
             }
+            // ASSUMPTION: boundary rules are not automatically enforceable — they are advisory/documentary only.
+            // IF THIS CHANGES: implement structural boundary checking by comparing module file ownership
+            // against declared container paths and flagging cross-boundary file references.
             "boundary" => {
                 results.push(RuleResult {
                     rule_id: rule.id.clone(),
@@ -55,54 +58,6 @@ pub fn run(json: bool) -> Result<(), String> {
     }
 
     report_fitness(json, &results)
-}
-
-/// Build actual dependency graph using the shared ModuleIndex resolver.
-fn build_actual_deps(
-    ctx: &ArchContext,
-    index: &ModuleIndex,
-) -> HashMap<String, HashSet<String>> {
-    let explicitly_mapped = ctx.collect_mapped_files();
-    let source_ext: HashSet<&str> = context::SOURCE_EXTENSIONS.iter().copied().collect();
-    let mut deps: HashMap<String, HashSet<String>> = HashMap::new();
-
-    for container in &ctx.arch.containers {
-        let detail = match ctx.details.get(&container.id) {
-            Some(d) => d,
-            None => continue,
-        };
-
-        for module in &detail.modules {
-            let full_id = format!("{}/{}", container.id, module.id);
-            let files_to_scan = context::walk_module_files(
-                &ctx.root, &container.path, module,
-                &explicitly_mapped, &source_ext, &ctx.ignore_patterns,
-            );
-
-            let module_deps = deps.entry(full_id.clone()).or_default();
-            for scan_path in &files_to_scan {
-                let file_content = match std::fs::read_to_string(scan_path) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-
-                let file_imports = imports::extract_imports(scan_path, &file_content);
-                for imp in &file_imports {
-                    if is_external_import(&imp.raw) {
-                        continue;
-                    }
-                    let resolved = index.resolve(&imp.raw, &container.id);
-                    for target in &resolved {
-                        if *target != full_id {
-                            module_deps.insert(target.clone());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    deps
 }
 
 fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
