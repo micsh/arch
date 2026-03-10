@@ -154,7 +154,7 @@ fn check_drift(
                 });
             } else {
                 let module_declared = declared_deps.iter()
-                    .any(|d| target_container.starts_with(d.as_str()));
+                    .any(|d| d.starts_with(&format!("{}/", target_container)));
                 let container_level_declared = container_deps.contains(target_container.as_str());
                 if !module_declared && !container_level_declared {
                     drift_items.push(DriftItem {
