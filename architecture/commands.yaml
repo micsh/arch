@@ -29,8 +29,8 @@ modules:
   - id: stale
     file: stale.rs
     owns: [architecture-health-check, combined-validation]
-    boundary: "Composite command — delegates to validate and coverage, no own logic beyond combining results"
-    depends_on: [commands/validate, commands/coverage, context/context]
+    boundary: "Composite command — delegates to validate, coverage, and drift — no own logic beyond combining results"
+    depends_on: [commands/validate, commands/coverage, commands/drift, context/context]
 
   - id: drift
     file: drift.rs

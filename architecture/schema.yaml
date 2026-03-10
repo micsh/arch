@@ -1,9 +1,9 @@
-# schema — YAML type definitions
+# schema — YAML type definitions and shared utilities
 # Source: src
 
 modules:
   - id: schema
     file: schema.rs
-    owns: [architecture-types, container-types, module-types, rule-types, story-types]
-    boundary: "Pure data types with serde derives — no logic, no I/O"
+    owns: [architecture-types, container-types, module-types, rule-types, story-types, pub-use-parsing, language-detection, identifier-normalization, path-utilities, pattern-utilities]
+    boundary: "YAML type definitions and shared parsing/utility primitives that must be visible to both imports and resolve due to the resolve-independence rule — no I/O, no filesystem access"
     depends_on: []

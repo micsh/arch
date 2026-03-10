@@ -43,7 +43,7 @@ arch owns authentication
 # Which source files aren't mapped to any module?
 arch coverage
 
-# Full health check (validate + coverage combined)
+# Full health check (validate + coverage + drift)
 arch stale
 
 # Do actual imports match declared dependencies?
@@ -51,6 +51,9 @@ arch drift
 
 # Do architectural rules hold against the real code?
 arch fitness
+
+# What are the dependency constraints on a module? (planning aid)
+arch rules context
 
 # Generate Mermaid container diagram
 arch mermaid
@@ -145,9 +148,11 @@ stories:
 | `arch validate` | Check YAML integrity: files exist, cross-refs valid, schema correct |
 | `arch coverage` | List source files not mapped to any module |
 | `arch owns <concept>` | Find which module owns a concept, file, or module ID |
-| `arch stale` | Full health check: validate + coverage combined |
+| `arch stale` | Full health check: validate + coverage + drift combined |
 | `arch drift` | Compare declared dependencies against actual code imports |
 | `arch fitness` | Validate architectural rules against actual code |
+| `arch rules` | List all fitness rules from architecture.yaml |
+| `arch rules <module>` | Show what a module cannot depend on and what cannot depend on it |
 | `arch stories` | Verify story flows against actual import connections |
 | `arch mermaid` | Generate Mermaid container dependency diagram |
 | `arch mermaid --brief` | Generate diagram with IDs only (no descriptions) |
@@ -157,6 +162,33 @@ stories:
 | `arch mermaid --update-readme` | Inject diagram into README.md between markers |
 
 All commands except `init` and `mermaid` support `--json` for structured output.
+
+### `arch stale` — Full Health Check
+
+Runs validate + coverage + drift in one pass — the single command for CI and pre-commit hooks:
+
+```
+$ arch stale
+✅ Architecture is up to date (8 containers, all files mapped, no drift)
+```
+
+When issues are found, output is grouped by check:
+
+```
+[validate]
+  ❌ Container 'auth': path 'src/auth' does not exist
+
+[coverage]
+  📂 src/utils/helpers.rs
+
+[drift]
+  ⚠️  backend/api (api/mod.rs:5)
+      import: use crate::metrics → backend/metrics
+
+⏰ 3 issue(s) found
+```
+
+Exit code 1 on validate errors or drift forbidden violations. Undeclared drift items are warnings (exit 0).
 
 ### `arch drift` — Dependency Drift Detection
 
@@ -181,6 +213,8 @@ $ arch drift
 
 Supports: F#, C#, Rust, TypeScript/JavaScript, Python, Go.
 
+**Rust `pub use` re-export resolution:** When a Rust module re-exports types from a submodule via `pub use submodule::*` or `pub use submodule::Type`, `arch drift` recognises the re-export chain and resolves the import to the re-exporting facade module rather than producing a `[broad match]` false-positive. This means declaring a dependency on the facade (`mod.rs`) module is sufficient — you don't need to separately declare dependencies on every submodule it re-exports from.
+
 ### `arch fitness` — Rule Validation
 
 Evaluates architecture rules from `architecture.yaml` against the actual codebase:
@@ -198,6 +232,25 @@ $ arch fitness
 
 - **`no_dependency` rules** are checked against the real import graph — violations are errors
 - **`boundary` rules** are prose constraints reported as manual-check items
+
+### `arch rules` — Rule Explorer
+
+Lists fitness rules and explains the dependency constraints on any module. Designed as a planning aid — run this before assigning a shared utility to a module to avoid architecture violations at implementation time:
+
+```
+$ arch rules context
+Rules applying to: context
+  ❌ cannot depend on: commands, scanner, cli, imports
+     context-independence — "Context is a shared loader — depends only on schema and resolve"
+
+  ⚠️  other modules forbidden to depend on context:
+     schema  (schema-independence — "Schema types are pure data — no logic dependencies")
+     imports (imports-independence — "Import extraction is a pure leaf utility — ...")
+     resolve (resolve-independence — "Resolution is a shared utility — ...")
+
+$ arch rules          # list all rules
+$ arch rules --json   # structured output
+```
 
 ### `arch stories` — Flow Verification
 
