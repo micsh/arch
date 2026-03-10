@@ -35,16 +35,32 @@ pub fn run(module: Option<&str>, json: bool) -> Result<(), String> {
 
 /// Show all rules that reference a specific module.
 fn run_filtered(module_name: &str, rules: &[Rule], json: bool) -> Result<(), String> {
-    // Rules where this module is the `from` (what it cannot depend on)
+    // no_dependency: this module is the `from` (what it cannot depend on)
     let from_rules: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.rule_type == "no_dependency" && r.from.as_deref() == Some(module_name))
         .collect();
 
-    // Rules where this module appears in `to` (what cannot depend on it)
+    // no_dependency: this module appears in `to` (what cannot depend on it)
     let to_rules: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.rule_type == "no_dependency" && to_list(r).iter().any(|t| t == module_name))
+        .collect();
+
+    // boundary: this module is named in `modules:` list or singular `module:`
+    let boundary_rules: Vec<&Rule> = rules
+        .iter()
+        .filter(|r| {
+            r.rule_type == "boundary"
+                && (r.modules.iter().any(|m| m == module_name)
+                    || r.module.as_deref() == Some(module_name))
+        })
+        .collect();
+
+    // no_import_from: this module is the `from` (forbidden import patterns)
+    let import_from_rules: Vec<&Rule> = rules
+        .iter()
+        .filter(|r| r.rule_type == "no_import_from" && r.from.as_deref() == Some(module_name))
         .collect();
 
     if json {
@@ -68,15 +84,39 @@ fn run_filtered(module_name: &str, rules: &[Rule], json: bool) -> Result<(), Str
                 })
             })
             .collect();
+        let boundary: Vec<serde_json::Value> = boundary_rules
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "rule_id": r.id,
+                    "constraint": r.constraint,
+                    "reason": r.reason,
+                })
+            })
+            .collect();
+        let no_import_from: Vec<serde_json::Value> = import_from_rules
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "rule_id": r.id,
+                    "pattern": r.pattern,
+                    "reason": r.reason,
+                })
+            })
+            .collect();
         print_json(&serde_json::json!({
             "module": module_name,
             "cannot_depend_on": cannot_depend_on,
             "forbidden_dependents": forbidden_dependents,
+            "boundary": boundary,
+            "no_import_from": no_import_from,
         }))?;
         return Ok(());
     }
 
-    if from_rules.is_empty() && to_rules.is_empty() {
+    if from_rules.is_empty() && to_rules.is_empty()
+        && boundary_rules.is_empty() && import_from_rules.is_empty()
+    {
         println!("No rules reference module '{module_name}'");
         return Ok(());
     }
@@ -104,6 +144,37 @@ fn run_filtered(module_name: &str, rules: &[Rule], json: bool) -> Result<(), Str
                 println!("     {from}  ({} — \"{reason}\")", r.id);
             } else {
                 println!("     {from}  ({})", r.id);
+            }
+        }
+    }
+
+    if !boundary_rules.is_empty() {
+        if !from_rules.is_empty() || !to_rules.is_empty() {
+            println!();
+        }
+        println!("  📋 boundary constraints:");
+        for r in &boundary_rules {
+            if let Some(constraint) = &r.constraint {
+                println!("     {} — \"{constraint}\"", r.id);
+            } else {
+                println!("     {}", r.id);
+            }
+            if let Some(reason) = &r.reason {
+                println!("     reason: {reason}");
+            }
+        }
+    }
+
+    if !import_from_rules.is_empty() {
+        if !from_rules.is_empty() || !to_rules.is_empty() || !boundary_rules.is_empty() {
+            println!();
+        }
+        println!("  🚫 forbidden import patterns:");
+        for r in &import_from_rules {
+            let pattern = r.pattern.as_deref().unwrap_or("?");
+            println!("     {} — cannot import from '{pattern}'", r.id);
+            if let Some(reason) = &r.reason {
+                println!("     reason: {reason}");
             }
         }
     }
