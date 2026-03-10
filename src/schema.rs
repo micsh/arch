@@ -236,3 +236,155 @@ pub fn detect_language(file: &str) -> Language {
         _ => Language::Unknown,
     }
 }
+
+/// A `pub use` re-export statement parsed from a Rust file.
+#[derive(Debug, Clone)]
+pub struct PubUseEntry {
+    /// The local submodule being re-exported from (e.g. "types" from `pub use types::*`).
+    /// Only bare local names are captured — `crate::` and `super::` forms are skipped.
+    pub source_module: String,
+    /// None = wildcard (`*`), Some(name) = specific named export.
+    pub symbol: Option<String>,
+}
+
+/// Parse `pub use` re-export statements from Rust source text.
+///
+/// Returns one entry per exported name. Handles `::*`, `::Name`, and `::{A, B}` forms.
+/// Strips `self::` prefix automatically.
+///
+/// # Skipped forms
+/// // ASSUMPTION: `pub use crate::X` and `pub use super::X` re-exports are not followed.
+/// // IF INVALID (a module re-exports from a non-local path): the re-export collapse in
+/// // resolve.rs will simply not apply — safe fallback, import stays as [broad match].
+pub fn extract_rust_pub_uses(content: &str) -> Vec<PubUseEntry> {
+    let mut entries = Vec::new();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("pub use ") || !trimmed.ends_with(';') {
+            continue;
+        }
+
+        let rest = trimmed
+            .strip_prefix("pub use ")
+            .unwrap()
+            .trim_end_matches(';')
+            .trim();
+
+        // Strip self:: prefix (pub use self::types::* → types::*)
+        let rest = rest.strip_prefix("self::").unwrap_or(rest);
+
+        // Skip cross-scope re-exports — not traceable without full module graph resolution
+        if rest.starts_with("crate::") || rest.starts_with("super::") {
+            continue;
+        }
+
+        if let Some(brace_pos) = rest.find("::{") {
+            // module::{A, B, C} form
+            let prefix = &rest[..brace_pos];
+            let source_module = prefix.split("::").last().unwrap_or(prefix).to_string();
+            if source_module.is_empty() {
+                continue;
+            }
+            let inner = rest[brace_pos + 3..].trim_end_matches('}');
+            for item in inner.split(',') {
+                let item = item.trim();
+                if item.is_empty() || item == ".." {
+                    continue;
+                }
+                entries.push(PubUseEntry { source_module: source_module.clone(), symbol: Some(item.to_string()) });
+            }
+        } else if rest.ends_with("::*") {
+            // module::* wildcard
+            let prefix = rest.strip_suffix("::*").unwrap();
+            let source_module = prefix.split("::").last().unwrap_or(prefix).to_string();
+            if source_module.is_empty() {
+                continue;
+            }
+            entries.push(PubUseEntry { source_module, symbol: None });
+        } else if let Some(last_sep) = rest.rfind("::") {
+            // module::Name (or a::b::Name — take only the immediate parent segment)
+            let prefix = &rest[..last_sep];
+            let symbol = &rest[last_sep + 2..];
+            let source_module = prefix.split("::").last().unwrap_or(prefix).to_string();
+            if source_module.is_empty() || symbol.is_empty() {
+                continue;
+            }
+            entries.push(PubUseEntry { source_module, symbol: Some(symbol.to_string()) });
+        }
+        // Single bare name (no ::) — skip; ambiguous (could be `use types;` module alias)
+    }
+
+    entries
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+
+    #[test]
+    fn test_pub_use_wildcard() {
+        let content = "pub use types::*;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_module, "types");
+        assert!(entries[0].symbol.is_none());
+    }
+
+    #[test]
+    fn test_pub_use_named() {
+        let content = "pub use types::PresenceStatus;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_module, "types");
+        assert_eq!(entries[0].symbol.as_deref(), Some("PresenceStatus"));
+    }
+
+    #[test]
+    fn test_pub_use_self_prefix_stripped() {
+        let content = "pub use self::types::*;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source_module, "types");
+        assert!(entries[0].symbol.is_none());
+    }
+
+    #[test]
+    fn test_pub_use_brace_group() {
+        let content = "pub use types::{A, B};\n";
+        let entries = extract_rust_pub_uses(content);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].source_module, "types");
+        assert_eq!(entries[0].symbol.as_deref(), Some("A"));
+        assert_eq!(entries[1].source_module, "types");
+        assert_eq!(entries[1].symbol.as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn test_pub_use_crate_skipped() {
+        let content = "pub use crate::other::Foo;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_pub_use_super_skipped() {
+        let content = "pub use super::parent::Bar;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_pub_use_bare_name_skipped() {
+        let content = "pub use types;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_non_pub_use_ignored() {
+        let content = "use types::*;\nmod types;\n";
+        let entries = extract_rust_pub_uses(content);
+        assert!(entries.is_empty());
+    }
+}
