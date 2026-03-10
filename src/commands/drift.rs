@@ -6,16 +6,22 @@ use serde::Serialize;
 use std::collections::HashSet;
 
 #[derive(Serialize)]
-struct DriftItem {
-    module_id: String,
-    file: String,
-    import_raw: String,
-    line_number: usize,
-    target_module: String,
-    kind: String,
+pub struct DriftItem {
+    pub module_id: String,
+    pub file: String,
+    pub import_raw: String,
+    pub line_number: usize,
+    pub target_module: String,
+    pub kind: String,
 }
 
-pub fn run(json: bool) -> Result<(), String> {
+pub struct DriftResult {
+    pub items: Vec<DriftItem>,
+    pub scanned_count: usize,
+}
+
+/// Scan source files and return all drift violations without printing anything.
+pub fn check() -> Result<DriftResult, String> {
     let ctx = ArchContext::load()?;
     let index = ctx.build_index();
     let explicitly_mapped = ctx.collect_mapped_files();
@@ -62,9 +68,6 @@ pub fn run(json: bool) -> Result<(), String> {
                         continue;
                     }
 
-                    // Python/general intra-package self-imports: if the leading token
-                    // (or the entire bare import) matches the module's owns or ID,
-                    // it's a self-reference — skip it
                     let leading = imp.raw.split(['.', ':']).next().unwrap_or("").to_lowercase();
                     let leading_norm = leading.replace('-', "").replace('_', "");
                     if !leading_norm.is_empty() {
@@ -95,7 +98,12 @@ pub fn run(json: bool) -> Result<(), String> {
         }
     }
 
-    report_drift(json, scanned_count, &drift_items)
+    Ok(DriftResult { items: drift_items, scanned_count })
+}
+
+pub fn run(json: bool) -> Result<(), String> {
+    let result = check()?;
+    report_drift(json, result.scanned_count, &result.items)
 }
 
 fn check_drift(
