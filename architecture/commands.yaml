@@ -50,6 +50,12 @@ modules:
     boundary: "Read-only analysis — verifies story flows against actual imports"
     depends_on: [context/context, depgraph/depgraph]
 
+  - id: rules
+    file: rules.rs
+    owns: [rule-listing, fitness-rule-queries, module-constraint-display]
+    boundary: "Read-only query — loads architecture YAML and formats rule data"
+    depends_on: [context/context]
+
   - id: mod
     file: mod.rs
     owns: [command-module-exports]

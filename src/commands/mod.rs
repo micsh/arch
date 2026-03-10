@@ -7,3 +7,4 @@ pub mod drift;
 pub mod fitness;
 pub mod stories;
 pub mod mermaid;
+pub mod rules;

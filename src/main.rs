@@ -42,6 +42,11 @@ enum Commands {
     Drift,
     /// Validate architectural rules against actual code
     Fitness,
+    /// Show fitness rules from architecture.yaml, optionally filtered to a module
+    Rules {
+        /// Module or container name to filter rules (e.g. context, imports, resolve)
+        module: Option<String>,
+    },
     /// Verify story flows against actual import connections
     Stories,
     /// Generate Mermaid diagrams from architecture YAML
@@ -76,6 +81,7 @@ fn main() {
         Commands::Stale => commands::stale::run(json),
         Commands::Drift => commands::drift::run(json),
         Commands::Fitness => commands::fitness::run(json),
+        Commands::Rules { module } => commands::rules::run(module.as_deref(), json),
         Commands::Stories => commands::stories::run(json),
         Commands::Mermaid { stories, brief, c4, svg, update_readme } =>
             commands::mermaid::run(stories, brief, c4, svg, update_readme),
