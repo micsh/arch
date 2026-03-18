@@ -1,8 +1,0 @@
-# depgraph — shared dependency-graph builder
-# Source: src
-modules:
-  - id: depgraph
-    file: depgraph.rs
-    owns: [dep-graph-building, import-scanning, module-dependency-resolution]
-    boundary: "Shared utility — depends on context, imports, and resolve; never on commands"
-    depends_on: [context/context, imports/imports, resolve/resolve]

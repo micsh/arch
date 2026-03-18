@@ -21,8 +21,7 @@ pub struct DriftResult {
 }
 
 /// Scan source files and return all drift violations without printing anything.
-pub fn check() -> Result<DriftResult, String> {
-    let ctx = ArchContext::load()?;
+pub fn check(ctx: &ArchContext) -> Result<DriftResult, String> {
     let index = ctx.build_index();
     let explicitly_mapped = ctx.collect_mapped_files();
     let source_ext: HashSet<&str> = context::SOURCE_EXTENSIONS.iter().copied().collect();
@@ -102,7 +101,8 @@ pub fn check() -> Result<DriftResult, String> {
 }
 
 pub fn run(json: bool) -> Result<(), String> {
-    let result = check()?;
+    let ctx = ArchContext::load()?;
+    let result = check(&ctx)?;
     report_drift(json, result.scanned_count, &result.items)
 }
 

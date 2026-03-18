@@ -1,0 +1,15 @@
+FILE: contextpack.rs
+MOD: commands/contextcmd
+OWNS: context-pack resolution — orchestrates lmindex::build_context_pack() for a given source file
+PROFILE: [io]
+CHANGE-FREQUENCY: volatile
+
+run: &str * bool → Result<(), String> [io]
+  calls: lmindex::build_context_pack, llmcode::discover_llmcode_files
+  note: always rebuilds in-memory (no index cache read in v0.6.0 — is_index_fresh() reserved for future fast-path)
+
+DEPENDS-ON: context, lmindex, llmcode
+
+KEY-INVARIANTS:
+- owner_module may be None when target file is not declared in architecture YAML — output must degrade gracefully, not error
+

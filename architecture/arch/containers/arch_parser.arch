@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: arch_parser
+PATH: src
+DEP: schema
+DESC: .arch source file discovery and parsing — pure leaf, no ArchContext dependency
+
+MOD: arch_parser
+  FILE: arch_parser.rs
+  OWN: .arch-file-discovery; system.arch-parsing; container-.arch-parsing; ArchSource-output
+  BND: Pure leaf — depends only on schema; never calls ArchContext::load(); never writes files
+  DEP: schema/schema

@@ -1,16 +1,9 @@
 use crate::context::{ArchContext, print_json};
 use crate::schema::Rule;
 
-/// Extract the `to` field as a list of strings (handles both single string and sequence).
+/// Extract the `to` field as a list of strings.
 fn to_list(rule: &Rule) -> Vec<String> {
-    match &rule.to {
-        Some(serde_yaml::Value::String(s)) => vec![s.clone()],
-        Some(serde_yaml::Value::Sequence(seq)) => seq
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect(),
-        _ => vec![],
-    }
+    rule.to.clone().unwrap_or_default()
 }
 
 pub fn run(module: Option<&str>, json: bool) -> Result<(), String> {
@@ -63,6 +56,14 @@ fn run_filtered(module_name: &str, rules: &[Rule], json: bool) -> Result<(), Str
         .filter(|r| r.rule_type == "no_import_from" && r.from.as_deref() == Some(module_name))
         .collect();
 
+    // restrict_callers_to: this module is the protected target
+    let restrict_callers_rules: Vec<&Rule> = rules
+        .iter()
+        .filter(|r| {
+            r.rule_type == "restrict_callers_to" && r.module.as_deref() == Some(module_name)
+        })
+        .collect();
+
     if json {
         let cannot_depend_on: Vec<serde_json::Value> = from_rules
             .iter()
@@ -104,18 +105,30 @@ fn run_filtered(module_name: &str, rules: &[Rule], json: bool) -> Result<(), Str
                 })
             })
             .collect();
+        let restrict_callers: Vec<serde_json::Value> = restrict_callers_rules
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "rule_id": r.id,
+                    "allowed_callers": r.allowed,
+                    "reason": r.reason,
+                })
+            })
+            .collect();
         print_json(&serde_json::json!({
             "module": module_name,
             "cannot_depend_on": cannot_depend_on,
             "forbidden_dependents": forbidden_dependents,
             "boundary": boundary,
             "no_import_from": no_import_from,
+            "restrict_callers_to": restrict_callers,
         }))?;
         return Ok(());
     }
 
     if from_rules.is_empty() && to_rules.is_empty()
         && boundary_rules.is_empty() && import_from_rules.is_empty()
+        && restrict_callers_rules.is_empty()
     {
         println!("No rules reference module '{module_name}'");
         return Ok(());
@@ -179,6 +192,25 @@ fn run_filtered(module_name: &str, rules: &[Rule], json: bool) -> Result<(), Str
         }
     }
 
+    if !restrict_callers_rules.is_empty() {
+        if !from_rules.is_empty() || !to_rules.is_empty()
+            || !boundary_rules.is_empty() || !import_from_rules.is_empty()
+        {
+            println!();
+        }
+        println!("  🔒 restrict callers to allowlist:");
+        for r in &restrict_callers_rules {
+            if r.allowed.is_empty() {
+                println!("     {} — ⚠️  allowed list is empty", r.id);
+            } else {
+                println!("     {} — only: {}", r.id, r.allowed.join(", "));
+            }
+            if let Some(reason) = &r.reason {
+                println!("     reason: {reason}");
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -226,6 +258,19 @@ fn run_all(rules: &[Rule], json: bool) -> Result<(), String> {
                 }
                 if let Some(c) = &r.constraint {
                     println!("    constraint: {c}");
+                }
+                if let Some(reason) = &r.reason {
+                    println!("    \"{reason}\"");
+                }
+                println!();
+            }
+            "restrict_callers_to" => {
+                println!("  restrict_callers_to  {}", r.id);
+                if let Some(m) = &r.module {
+                    println!("    protected: {m}");
+                }
+                if !r.allowed.is_empty() {
+                    println!("    allowed callers: {}", r.allowed.join(", "));
                 }
                 if let Some(reason) = &r.reason {
                     println!("    \"{reason}\"");

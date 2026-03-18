@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: depgraph
+PATH: src
+DEP: context; imports; resolve
+DESC: Shared dep-graph builder — scans source imports and resolves module dependencies
+
+MOD: depgraph
+  FILE: depgraph.rs
+  OWN: dep-graph-building; import-scanning; module-dependency-resolution
+  BND: Shared utility — depends on context, imports, and resolve; never on commands
+  DEP: context/context; imports/imports; resolve/resolve

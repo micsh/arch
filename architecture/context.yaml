@@ -1,9 +1,0 @@
-# context — shared architecture loading and utilities
-# Source: src/context.rs
-
-modules:
-  - id: context
-    file: context.rs
-    owns: [arch-context, yaml-loading, container-detail-loading, file-walking, json-output, source-extensions]
-    boundary: "Shared infrastructure — no command-specific logic"
-    depends_on: [schema/schema, resolve/resolve]

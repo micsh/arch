@@ -4,8 +4,9 @@ use std::path::Path;
 pub fn run(deep: bool) -> Result<(), String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
 
-    if root.join("architecture").join("architecture.yaml").exists() || root.join("architecture.yaml").exists() {
-        return Err("architecture.yaml already exists. Delete it first to reinitialize.".into());
+    let system_arch_path = root.join("architecture").join("arch").join("system.arch");
+    if system_arch_path.exists() {
+        return Err("architecture/arch/system.arch already exists. Delete it first to reinitialize.".into());
     }
 
     let project_type = scanner::detect_project_type(&root);
@@ -30,151 +31,62 @@ pub fn run(deep: bool) -> Result<(), String> {
         .and_then(|n| n.to_str())
         .unwrap_or("MyProject");
 
-    // Create architecture/ directory
-    let arch_dir = root.join("architecture");
-    std::fs::create_dir_all(&arch_dir).map_err(|e| e.to_string())?;
+    // Create architecture/arch/containers/ directories
+    let arch_dir = root.join("architecture").join("arch");
+    let containers_dir = arch_dir.join("containers");
+    std::fs::create_dir_all(&containers_dir).map_err(|e| e.to_string())?;
 
-    // Scan for containers first (needed for root YAML)
+    // Scan for containers first (needed for system.arch CONT: list)
     let containers = scan_containers(&root, &project_type);
 
-    // Generate root architecture.yaml inside architecture/
-    let yaml = generate_root_yaml(project_name, &containers);
-    std::fs::write(arch_dir.join("architecture.yaml"), yaml).map_err(|e| e.to_string())?;
+    // Write system.arch
+    let system_arch = generate_system_arch(project_name, &containers);
+    std::fs::write(&system_arch_path, system_arch).map_err(|e| e.to_string())?;
 
-    // Generate stories.yaml stub
-    let stories = generate_stories_stub();
-    std::fs::write(arch_dir.join("stories.yaml"), stories).map_err(|e| e.to_string())?;
-
-    // Generate per-container detail files
+    // Write per-container .arch files
     for (id, path) in &containers {
-        let container_yaml = if deep {
-            generate_deep_container_yaml(&root, id, path)
+        let container_arch = if deep {
+            generate_deep_container_arch(&root, id, path)
         } else {
-            generate_container_yaml(id, path)
+            generate_container_arch(id, path)
         };
-        std::fs::write(arch_dir.join(format!("{id}.yaml")), container_yaml)
+        std::fs::write(containers_dir.join(format!("{id}.arch")), container_arch)
             .map_err(|e| e.to_string())?;
     }
 
     println!("\nCreated:");
-    println!("  architecture/architecture.yaml");
-    println!("  architecture/stories.yaml");
+    println!("  architecture/arch/system.arch");
     for (id, _) in &containers {
-        println!("  architecture/{id}.yaml");
+        println!("  architecture/arch/containers/{id}.arch");
     }
     println!("\nNext: review the generated files and fill in ownership details.");
 
     Ok(())
 }
 
-fn generate_root_yaml(name: &str, containers: &[(String, String)]) -> String {
-    let mut yaml = format!(
-        r#"guidance: |
-  Before making code changes, read the relevant container YAML.
-  After changes, update ownership and dependencies if they changed.
-  Check stories.yaml if your change crosses multiple modules.
-
-system:
-  name: {name}
-  description: TODO — describe your project
-
-containers:
-"#
+fn generate_system_arch(name: &str, containers: &[(String, String)]) -> String {
+    let mut out = format!(
+        "ARCH: 0.4\nSYS: {name}\nDESC: TODO — describe your project\n\nGUIDE:\n  Before making code changes, read the relevant container .arch file.\n  After changes, update ownership and dependencies if they changed.\n  Check STORY: blocks if your change crosses multiple modules.\nENDGUIDE\n\n"
     );
 
-    if containers.is_empty() {
-        yaml.push_str("  []\n");
-    } else {
-        for (id, path) in containers {
-            yaml.push_str(&format!(
-                "  - id: {id}\n    path: {path}\n    description: TODO\n    depends_on: []\n\n"
-            ));
-        }
+    for (id, _) in containers {
+        out.push_str(&format!("CONT: {id}\n"));
     }
 
-    yaml.push_str(
-        r#"rules: []
-  # Example:
-  # - id: core-independence
-  #   type: no_dependency
-  #   from: core
-  #   to: [ui, api]
-  #   reason: "Core must not depend on presentation layers"
-"#,
+    out.push_str(
+        "\n# Add fitness rules here. Example:\n# RULE: core-independence\n#   TYPE: no_dependency\n#   FROM: core/core\n#   TO: ui/ui\n#   WHY: Core must not depend on presentation layers\n\n# Add stories here. Example:\n# STORY: user-login\n#   DESC: User submits credentials, validated, token issued\n#   FLOW: frontend/login; backend/auth; backend/database\n",
     );
 
-    yaml
+    out
 }
 
-fn generate_stories_stub() -> String {
-    r#"# Cross-cutting flows connecting modules across containers.
-# Add stories to document how features work end-to-end.
-
-stories: []
-  # Example:
-  # - id: user-login
-  #   description: User submits credentials, validated, token issued
-  #   flow:
-  #     - frontend/login-page
-  #     - backend/auth
-  #     - backend/database
-"#
-    .to_string()
-}
-
-fn scan_containers(root: &Path, _project_type: &scanner::ProjectType) -> Vec<(String, String)> {
-    // Look for common source directories
-    let candidates = ["src", "lib", "app", "packages", "crates", "services"];
-    let mut containers = Vec::new();
-
-    for candidate in &candidates {
-        let dir = root.join(candidate);
-        if dir.is_dir() {
-            // Check if this dir has subdirectories (potential containers)
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    if entry.path().is_dir() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        let path = format!("{candidate}/{name}");
-                        containers.push((name.to_lowercase().replace(' ', "-"), path));
-                    }
-                }
-            }
-
-            // If no subdirs, the candidate itself is a container
-            if containers.is_empty() {
-                containers.push((candidate.to_string(), candidate.to_string()));
-            }
-            break;
-        }
-    }
-
-    if containers.is_empty() {
-        containers.push(("main".to_string(), ".".to_string()));
-    }
-
-    containers
-}
-
-fn generate_container_yaml(id: &str, path: &str) -> String {
+fn generate_container_arch(id: &str, path: &str) -> String {
     format!(
-        r#"# {id} — TODO: describe this container
-# Source: {path}
-
-modules: []
-  # Example:
-  # - id: auth
-  #   file: auth.rs
-  #   owns: [authentication, token-validation]
-  #   boundary: "Auth logic only — no direct DB queries"
-  #   depends_on: [backend/database]
-"#
+        "ARCH: 0.4\nCONT: {id}\nPATH: {path}\nDEP:\nDESC: TODO — describe this container\n\n# MOD: module-name\n#   FILE: some/file.rs\n#   OWN: concept1; concept2\n#   BND: optional boundary description\n#   DEP: other-container/module\n"
     )
 }
 
-/// Deep scan: find .csproj/.fsproj files and __init__.py packages,
-/// infer modules with depends_on from ProjectReference tags.
-fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String {
+fn generate_deep_container_arch(root: &Path, id: &str, rel_path: &str) -> String {
     let container_dir = root.join(rel_path);
     let mut modules: Vec<InferredModule> = Vec::new();
 
@@ -214,7 +126,6 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
         {
             if entry.file_name() == "__init__.py" {
                 if let Some(m) = infer_python_module(&container_dir, entry.path()) {
-                    // Avoid duplicating a module ID already inferred
                     if !modules.iter().any(|existing| existing.id == m.id) {
                         modules.push(m);
                     }
@@ -241,11 +152,10 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
     }
 
     if modules.is_empty() {
-        return generate_container_yaml(id, rel_path);
+        return generate_container_arch(id, rel_path);
     }
 
     // Deduplicate: use parent-prefix compound naming (e.g., durable-tasks--in-memory)
-    // instead of opaque numeric suffixes (in-memory-2)
     let mut id_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for m in &modules {
         *id_counts.entry(m.id.clone()).or_default() += 1;
@@ -257,14 +167,12 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
     if !duplicated_ids.is_empty() {
         for m in &mut modules {
             if duplicated_ids.contains(&m.id) {
-                // Use the project stem to build a parent-prefixed compound ID
                 let stem = std::path::Path::new(&m.file)
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
                 let segments: Vec<&str> = stem.split('.').collect();
                 if segments.len() >= 2 {
-                    // Use parent.child → parent--child (e.g., DurableTasks.InMemory → durable-tasks--in-memory)
                     let parent = pascal_to_kebab(segments[segments.len() - 2]);
                     let child = pascal_to_kebab(segments[segments.len() - 1]);
                     m.id = format!("{}--{}", parent, child);
@@ -272,7 +180,6 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
             }
         }
 
-        // Final safety net: if compound naming still produces duplicates, append numeric suffix
         let mut final_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for m in &modules {
             *final_counts.entry(m.id.clone()).or_default() += 1;
@@ -295,23 +202,59 @@ fn generate_deep_container_yaml(root: &Path, id: &str, rel_path: &str) -> String
         }
     }
 
-    let mut yaml = format!("# {id} — TODO: describe this container\n# Source: {rel_path}\n\nmodules:\n");
+    // Emit .arch format
+    let mut out = format!("ARCH: 0.4\nCONT: {id}\nPATH: {rel_path}\nDEP:\nDESC: TODO — describe this container\n\n");
 
     for m in &modules {
-        yaml.push_str(&format!("  - id: {}\n", m.id));
-        yaml.push_str(&format!("    file: {}\n", m.file));
-        let owns_str = m.owns.join(", ");
-        yaml.push_str(&format!("    owns: [{}]\n", owns_str));
+        out.push_str(&format!("MOD: {}\n", m.id));
+        out.push_str(&format!("  FILE: {}\n", m.file));
+        if !m.owns.is_empty() {
+            out.push_str(&format!("  OWN: {}\n", m.owns.join("; ")));
+        }
         if let Some(ref boundary) = m.boundary {
-            yaml.push_str(&format!("    boundary: \"{}\"\n", boundary));
+            out.push_str(&format!("  BND: {boundary}\n"));
         }
         if !m.depends_on.is_empty() {
-            yaml.push_str(&format!("    depends_on: [{}]\n", m.depends_on.join(", ")));
+            out.push_str(&format!("  DEP: {}\n", m.depends_on.join("; ")));
         }
-        yaml.push('\n');
+        out.push('\n');
     }
 
-    yaml
+    out
+}
+
+fn scan_containers(root: &Path, _project_type: &scanner::ProjectType) -> Vec<(String, String)> {
+    // Look for common source directories
+    let candidates = ["src", "lib", "app", "packages", "crates", "services"];
+    let mut containers = Vec::new();
+
+    for candidate in &candidates {
+        let dir = root.join(candidate);
+        if dir.is_dir() {
+            // Check if this dir has subdirectories (potential containers)
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        let path = format!("{candidate}/{name}");
+                        containers.push((name.to_lowercase().replace(' ', "-"), path));
+                    }
+                }
+            }
+
+            // If no subdirs, the candidate itself is a container
+            if containers.is_empty() {
+                containers.push((candidate.to_string(), candidate.to_string()));
+            }
+            break;
+        }
+    }
+
+    if containers.is_empty() {
+        containers.push(("main".to_string(), ".".to_string()));
+    }
+
+    containers
 }
 
 struct InferredModule {

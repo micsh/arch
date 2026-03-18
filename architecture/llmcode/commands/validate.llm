@@ -1,0 +1,27 @@
+FILE: validate.rs
+MOD: commands/validate
+OWNS: architecture integrity validation — cross-ref checks, file existence, orphan detection, MOD: link validation
+PROFILE: [io, pure-core]
+CHANGE-FREQUENCY: stable
+
+ValidationResult: record — errors: Vec<String>, warnings: Vec<String>, container_count: usize
+
+check: &ArchContext → Result<ValidationResult, String> [io]
+  calls: validate_container_detail
+  called-by: run, stale::run
+  note: all validation logic lives here; run() is a thin display wrapper
+
+run: bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, check
+  called-by: cli dispatch
+
+validate_container_detail: &Path * &Container * &ContainerDetail * &mut Vec<String> * &mut Vec<String> * &HashSet<String> → Result<(), String> [pure]
+  called-by: check
+  note: receives already-parsed ContainerDetail from ctx.details (no file read); checks file existence, duplicate module IDs, and unresolved depends_on refs
+
+DEPENDS-ON: context, llmcode
+
+KEY-INVARIANTS:
+- check() is called by stale::run — any new error category added here automatically surfaces in stale output; keep ValidationResult additive
+- validate_container_detail takes &ContainerDetail not a file path — no per-container file I/O; caller supplies detail from ctx.details
+- Orphan detection scans architecture/arch/containers/*.arch (not *.yaml) — stems not matching any declared container id are warned

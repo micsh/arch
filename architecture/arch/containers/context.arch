@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: context
+PATH: src
+DEP: schema; resolve; arch_parser
+DESC: Shared architecture loading — ArchContext, file walking, JSON output
+
+MOD: context
+  FILE: context.rs
+  OWN: arch-context; arch-loading; container-detail-loading; file-walking; json-output; source-extensions
+  BND: Shared infrastructure — no command-specific logic
+  DEP: schema/schema; resolve/resolve; arch_parser/arch_parser

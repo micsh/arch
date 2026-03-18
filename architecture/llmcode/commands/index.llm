@@ -1,0 +1,14 @@
+FILE: index.rs
+MOD: commands/index
+OWNS: index compilation — writes arch.index.json + llmcode.index.json to architecture/generated/
+PROFILE: [io]
+CHANGE-FREQUENCY: stable
+
+run: bool → Result<(), String> [io]
+  calls: lmindex::build_arch_index, lmindex::build_llmcode_index, llmcode::discover_llmcode_files
+
+DEPENDS-ON: context, lmindex, llmcode, schema
+
+KEY-INVARIANTS:
+- output path is always architecture/generated/ — callers must not rely on cwd-relative paths
+

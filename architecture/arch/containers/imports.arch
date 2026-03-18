@@ -1,0 +1,10 @@
+ARCH: 0.4
+CONT: imports
+PATH: src
+DEP:
+DESC: Source file import extraction — language-specific parsers
+
+MOD: imports
+  FILE: imports.rs
+  OWN: import-extraction; language-parsers; fsharp-imports; csharp-imports; rust-imports; typescript-imports; python-imports; go-imports
+  BND: Pure text extraction — reads source content, returns import strings. No filesystem I/O, no resolution.

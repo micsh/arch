@@ -1,0 +1,10 @@
+ARCH: 0.4
+CONT: scanner
+PATH: src
+DEP:
+DESC: Project type detection by file presence
+
+MOD: scanner
+  FILE: scanner.rs
+  OWN: project-type-detection; source-dir-scanning; language-identification
+  BND: Detection by file presence only — never reads file contents

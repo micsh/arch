@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: llmcode
+PATH: src
+DEP: schema
+DESC: .llmcode file discovery, parsing, and MOD link validation — pure leaf utility
+
+MOD: llmcode
+  FILE: llmcode.rs
+  OWN: llmcode-parsing; mod-link-extraction; llmcode-discovery; structural-validation
+  BND: Pure leaf — discovers, parses, and validates .llmcode files; no resolution logic
+  DEP: schema/schema

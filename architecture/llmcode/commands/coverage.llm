@@ -1,0 +1,24 @@
+FILE: coverage.rs
+MOD: commands/coverage
+OWNS: unmapped source file detection — walks filesystem against declared module ownership
+PROFILE: [io, pure-core]
+CHANGE-FREQUENCY: stable
+
+CoverageResult: record — unmapped: Vec<String>
+
+check: &ArchContext → Result<CoverageResult, String> [io]
+  calls: context::walk_module_files, schema::is_directory_owner, is_in_covered_dir
+  called-by: run, stale::run
+
+run: bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, check
+
+is_in_covered_dir: &Path * &HashSet<PathBuf> → bool [pure]
+  note: walks ancestor dirs upward — a file is covered if any ancestor is a covered_dirs entry
+
+DEPENDS-ON: context, schema
+
+KEY-INVARIANTS:
+- Directory-owner modules (entry-point files like mod.rs, __init__.py) cover their entire subtree — is_in_covered_dir must climb all ancestors, not just the immediate parent
+- coverage uses COVERAGE_EXTENSIONS (broader set) not SOURCE_EXTENSIONS — a file can be covered by drift but not coverage if its extension is in SOURCE but not COVERAGE
+

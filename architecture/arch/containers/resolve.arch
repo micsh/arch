@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: resolve
+PATH: src
+DEP: schema
+DESC: Shared import resolution — ModuleIndex and external import detection
+
+MOD: resolve
+  FILE: resolve.rs
+  OWN: module-index; import-resolution; external-import-detection; keyword-indexing
+  BND: Pure resolution logic — no I/O, no command-specific behavior
+  DEP: schema/schema

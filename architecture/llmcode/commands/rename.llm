@@ -1,0 +1,15 @@
+FILE: rename.rs
+MOD: commands/rename
+OWNS: module ID migration — rewrites MOD: occurrences across all .llmcode files
+PROFILE: [io]
+CHANGE-FREQUENCY: stable
+
+run: &str * &str → Result<(), String> [io]
+  note: loads ArchContext with .ok() — warns and proceeds if arch YAML is missing or invalid
+
+DEPENDS-ON: context, llmcode
+
+KEY-INVARIANTS:
+- CNTR: left/right module references are NOT rewritten — only MOD: lines; authors must fix CNTR: references manually after rename
+- rename proceeds even when arch validate would fail (fail-soft context load by design)
+

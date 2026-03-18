@@ -1,0 +1,174 @@
+ARCH: 0.4
+SYS: arch
+DESC: Architecture-as-code CLI — validate, query, and maintain architecture YAML for any codebase
+
+GUIDE:
+arch is a single-binary CLI tool. All domain types live in schema.rs.
+Shared loading and scanning infrastructure lives in context.rs (ArchContext).
+Each command is a standalone module under src/commands/ — commands share code
+through ArchContext (file walking) and extracted check() functions.
+The stale command composes validate + coverage.
+The scanner detects project type by file presence, not content parsing.
+Before adding a command, check if an existing one already covers the use case.
+ENDGUIDE
+
+CONT: cli
+CONT: schema
+CONT: context
+CONT: scanner
+CONT: imports
+CONT: resolve
+CONT: depgraph
+CONT: arch_parser
+CONT: llmcode
+CONT: lmindex
+CONT: commands
+
+RULE: schema-independence
+  TYPE: no_dependency
+  FROM: schema
+  TO: commands; scanner; cli; context
+  WHY: Schema types are pure data — no logic dependencies
+
+RULE: scanner-independence
+  TYPE: no_dependency
+  FROM: scanner
+  TO: commands; cli; context
+  WHY: Scanner is a leaf utility — only used by init command
+
+RULE: imports-independence
+  TYPE: no_dependency
+  FROM: imports
+  TO: commands; scanner; cli; resolve; context
+  WHY: Import extraction is a pure leaf utility — no logic dependencies
+
+RULE: resolve-independence
+  TYPE: no_dependency
+  FROM: resolve
+  TO: commands; scanner; cli; imports; context
+  WHY: Resolution is a shared utility — depends only on schema types
+
+RULE: context-independence
+  TYPE: no_dependency
+  FROM: context
+  TO: commands; scanner; cli; imports
+  WHY: Context is a shared loader — depends only on schema and resolve
+
+RULE: init-isolation
+  TYPE: no_dependency
+  FROM: commands/init
+  TO: commands/validate; commands/coverage; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/rename; commands/spec; commands/index
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: validate-isolation
+  TYPE: no_dependency
+  FROM: commands/validate
+  TO: commands/init; commands/coverage; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/rename; commands/spec; commands/index
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: coverage-isolation
+  TYPE: no_dependency
+  FROM: commands/coverage
+  TO: commands/init; commands/validate; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/rename; commands/spec; commands/index
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: owns-isolation
+  TYPE: no_dependency
+  FROM: commands/owns
+  TO: commands/init; commands/validate; commands/coverage; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/rename; commands/spec; commands/index
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: drift-isolation
+  TYPE: no_dependency
+  FROM: commands/drift
+  TO: commands/init; commands/validate; commands/coverage; commands/owns; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/rename; commands/spec; commands/index
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: context-command-isolation
+  TYPE: no_dependency
+  FROM: commands/contextcmd
+  TO: commands/init; commands/validate; commands/coverage; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/rename; commands/spec; commands/index; commands/stale
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: rename-command-isolation
+  TYPE: no_dependency
+  FROM: commands/rename
+  TO: commands/init; commands/validate; commands/coverage; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/spec; commands/index; commands/stale
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: spec-command-isolation
+  TYPE: no_dependency
+  FROM: commands/spec
+  TO: commands/init; commands/validate; commands/coverage; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/contextcmd; commands/rename; commands/index; commands/stale
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: llmcode-independence
+  TYPE: no_dependency
+  FROM: llmcode
+  TO: commands; context; imports; depgraph; resolve; lmindex
+  WHY: llmcode is a pure leaf utility — depends only on schema, mirrors imports.rs position in the layer model
+
+RULE: lmindex-independence
+  TYPE: no_dependency
+  FROM: lmindex
+  TO: commands
+  WHY: lmindex is a shared analysis layer — must not depend on commands to remain independently consumable
+
+RULE: index-command-isolation
+  TYPE: no_dependency
+  FROM: commands/index
+  TO: commands/validate; commands/coverage; commands/owns; commands/drift; commands/fitness; commands/stories; commands/rules; commands/mermaid; commands/init; commands/stale; commands/contextcmd; commands/rename; commands/spec
+  WHY: Leaf commands do not import other commands — each is independently testable
+
+RULE: arch-parser-independence
+  TYPE: no_dependency
+  FROM: arch_parser
+  TO: commands; cli; context; imports; depgraph; resolve; lmindex; llmcode; scanner
+  WHY: arch_parser is a pure leaf — depends only on schema; no context loader, no command logic
+
+RULE: arch-parser-callers
+  TYPE: restrict_callers_to
+  MODULE: arch_parser
+  ALLOWED: context/context
+  WHY: Only context may call arch_parser — arch source loading is exclusively context.rs's responsibility
+
+STORY: user-runs-init
+  DESC: User scaffolds architecture for a new project
+  FLOW: cli/cli; scanner/scanner; commands/init
+
+STORY: user-validates
+  DESC: User checks architecture integrity after edits
+  FLOW: cli/cli; commands/validate
+
+STORY: user-queries-ownership
+  DESC: User finds which module owns a concept before editing
+  FLOW: cli/cli; commands/owns
+
+STORY: user-checks-coverage
+  DESC: User finds unmapped source files
+  FLOW: cli/cli; commands/coverage
+
+STORY: user-checks-staleness
+  DESC: User checks overall architecture health (validate + coverage combined)
+  FLOW: cli/cli; commands/stale
+
+STORY: user-checks-drift
+  DESC: User detects undeclared or forbidden dependencies by scanning source imports
+  FLOW: cli/cli; commands/drift
+
+STORY: user-checks-fitness
+  DESC: User validates architectural rules against actual code
+  FLOW: cli/cli; commands/fitness
+
+STORY: user-checks-stories
+  DESC: User verifies that story flows are backed by real import connections
+  FLOW: cli/cli; commands/stories
+
+STORY: user-generates-diagrams
+  DESC: User generates Mermaid architecture diagrams for documentation
+  FLOW: cli/cli; commands/mermaid
+
+STORY: user-deep-init
+  DESC: User scaffolds architecture with inferred modules from project files
+  FLOW: cli/cli; scanner/scanner; commands/init
+

@@ -1,0 +1,18 @@
+FILE: stories.rs
+MOD: commands/stories
+OWNS: story flow verification — checks declared flows in stories.yaml against actual import connections
+PROFILE: [io, pure-core]
+CHANGE-FREQUENCY: volatile
+
+run: bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, ctx::load_stories, depgraph::build_dep_graph, verify_story_pairs
+  note: build_dep_graph called with resolve_self=true (includes same-container connections)
+
+verify_story_pairs: &[String] * &HashMap<String,HashSet<String>> * bool → (usize, usize, usize, Vec<Value>) [pure]
+  note: container refs (no '/') are skipped not failed; same-container pairs count as connected
+
+DEPENDS-ON: context, depgraph
+
+KEY-INVARIANTS:
+- resolve_self=true is required — stories span containers and same-container module pairs must resolve; using false (as fitness does) would produce false gap failures
+

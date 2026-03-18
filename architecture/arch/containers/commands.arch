@@ -1,0 +1,94 @@
+ARCH: 0.4
+CONT: commands
+PATH: src/commands
+DEP: schema; imports; resolve; context; depgraph; lmindex
+DESC: Subcommand implementations — each is self-contained
+
+MOD: init
+  FILE: init.rs
+  OWN: project-scaffolding; template-generation; directory-scanning; deep-inference; project-reference-parsing; naming-classification
+  BND: Scaffolding only — uses scanner for detection, schema for types
+  DEP: scanner/scanner; schema/schema
+
+MOD: validate
+  FILE: validate.rs
+  OWN: yaml-integrity; cross-ref-validation; file-existence-checks; mod-link-validation
+  BND: Read-only validation — never modifies files
+  DEP: context/context; llmcode/llmcode
+
+MOD: coverage
+  FILE: coverage.rs
+  OWN: unmapped-file-detection; source-file-walking
+  BND: Read-only analysis — walks filesystem, compares to YAML
+  DEP: context/context
+
+MOD: owns
+  FILE: owns.rs
+  OWN: concept-lookup; module-search; ownership-queries
+  BND: Read-only query — searches owns fields, module ids, file names
+  DEP: context/context
+
+MOD: stale
+  FILE: stale.rs
+  OWN: architecture-health-check; combined-validation; fitness-composition; llmcode-staleness-check
+  BND: Composite command — delegates to validate, coverage, drift, fitness, lmindex — no own logic beyond combining results
+  DEP: commands/validate; commands/coverage; commands/drift; commands/fitness; context/context; lmindex/lmindex; llmcode/llmcode
+
+MOD: drift
+  FILE: drift.rs
+  OWN: dependency-drift-detection; undeclared-dependency-detection
+  BND: Read-only analysis — scans source imports vs declared depends_on
+  DEP: context/context; imports/imports; resolve/resolve
+
+MOD: fitness
+  FILE: fitness.rs
+  OWN: rule-validation; no-dependency-enforcement; boundary-rule-reporting
+  BND: Read-only analysis — evaluates architecture rules against actual imports
+  DEP: context/context; imports/imports; depgraph/depgraph
+
+MOD: stories
+  FILE: stories.rs
+  OWN: story-flow-verification; bidirectional-connection-check
+  BND: Read-only analysis — verifies story flows against actual imports
+  DEP: context/context; depgraph/depgraph
+
+MOD: rules
+  FILE: rules.rs
+  OWN: rule-listing; fitness-rule-queries; module-constraint-display
+  BND: Read-only query — loads architecture and formats rule data
+  DEP: context/context
+
+MOD: mod
+  FILE: mod.rs
+  OWN: command-module-exports
+  BND: Re-exports only
+
+MOD: mermaid
+  FILE: mermaid.rs
+  OWN: diagram-generation; container-diagrams; story-flowcharts
+  BND: Read-only — generates Mermaid text from architecture, never modifies files
+  DEP: context/context
+
+MOD: index
+  FILE: index.rs
+  OWN: index-compilation-command; arch-index-json-output; llmcode-index-json-output
+  BND: Read-only command — delegates compilation to lmindex; outputs JSON index files
+  DEP: context/context; lmindex/lmindex; llmcode/llmcode
+
+MOD: contextcmd
+  FILE: contextpack.rs
+  OWN: context-pack-resolution-command; file-to-module-context-pack-output
+  BND: Thin orchestrator — calls lmindex::build_context_pack(); no resolution logic here
+  DEP: context/context; lmindex/lmindex; llmcode/llmcode
+
+MOD: rename
+  FILE: rename.rs
+  OWN: mod-id-migration; llmcode-text-rewrite
+  BND: Mutation command — rewrites MOD: references in .llmcode files; uses context with .ok() (optional)
+  DEP: llmcode/llmcode
+
+MOD: spec
+  FILE: spec.rs
+  OWN: spec-version-display; llmcode-spec-version-command
+  BND: Display only — emits LLMCODE_SPEC_VERSION; no file I/O
+  DEP: schema/schema

@@ -1,5 +1,8 @@
+pub mod arch_parser;
 mod commands;
 mod depgraph;
+mod llmcode;
+mod lmindex;
 mod schema;
 mod scanner;
 mod imports;
@@ -49,6 +52,30 @@ enum Commands {
     },
     /// Verify story flows against actual import connections
     Stories,
+    /// Compile arch.index.json and llmcode.index.json
+    Index,
+    /// Display spec version(s) understood by this binary
+    Spec {
+        /// Show the full llmcode grammar spec
+        #[arg(long)]
+        llmcode: bool,
+        /// Show the full .arch grammar spec
+        #[arg(long)]
+        arch: bool,
+    },
+    /// Rename a module ID across all .llmcode files
+    Rename {
+        /// Old module ID (e.g. commands/old-name)
+        old_id: String,
+        /// New module ID (e.g. commands/new-name)
+        new_id: String,
+    },
+    /// Resolve and display the context pack for a source file
+    Context {
+        /// Source file path to resolve context for
+        #[arg(long)]
+        file: String,
+    },
     /// Generate Mermaid diagrams from architecture YAML
     Mermaid {
         /// Generate story flow diagrams instead of container diagram
@@ -83,6 +110,10 @@ fn main() {
         Commands::Fitness => commands::fitness::run(json),
         Commands::Rules { module } => commands::rules::run(module.as_deref(), json),
         Commands::Stories => commands::stories::run(json),
+        Commands::Index => commands::index::run(json),
+        Commands::Spec { llmcode, arch } => commands::spec::run(llmcode, arch),
+        Commands::Rename { old_id, new_id } => commands::rename::run(&old_id, &new_id),
+        Commands::Context { file } => commands::contextpack::run(&file, json),
         Commands::Mermaid { stories, brief, c4, svg, update_readme } =>
             commands::mermaid::run(stories, brief, c4, svg, update_readme),
     };

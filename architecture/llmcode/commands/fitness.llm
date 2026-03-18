@@ -1,0 +1,31 @@
+FILE: fitness.rs
+MOD: commands/fitness
+OWNS: architectural rule enforcement — evaluates rules from architecture.yaml against actual import graph
+PROFILE: [io, pure-core]
+CHANGE-FREQUENCY: volatile
+
+RuleResult: record — rule_id, passed, violations: Vec<String>
+
+run: bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, ctx::build_index, depgraph::build_dep_graph, evaluate_no_dependency, evaluate_no_import_from, evaluate_restrict_callers_to
+  note: build_dep_graph called with resolve_self=false (excludes same-container deps)
+
+evaluate_no_dependency: &Rule * &HashMap<String,HashSet<String>> * &Architecture * &HashMap<String,ContainerDetail> → RuleResult [pure]
+  calls: resolve_rule_target
+
+evaluate_restrict_callers_to: &Rule * &HashMap<String,HashSet<String>> * &HashMap<String,ContainerDetail> → RuleResult [pure]
+  calls: resolve_rule_target
+  note: empty allowed list → always fails with guidance to use no_dependency instead
+
+evaluate_no_import_from: &Rule * &ArchContext → RuleResult [io]
+  note: reads source files directly; uses glob pattern matching on import segments
+
+resolve_rule_target: &str * &HashMap<String,ContainerDetail> → HashSet<String> [pure]
+  note: "container" expands to all container/module IDs; "container/module" is used as-is
+
+DEPENDS-ON: context, imports, depgraph, schema, schema
+
+KEY-INVARIANTS:
+- boundary rules always pass (manual check) — they are documentary only; a new automated boundary check requires a new rule type and evaluator arm
+- restrict_callers_to with empty allowed list returns a failure result, not a panic — callers see it as a rule violation
+

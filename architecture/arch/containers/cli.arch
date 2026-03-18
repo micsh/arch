@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: cli
+PATH: src
+DEP: schema; scanner; commands; imports; context; depgraph
+DESC: CLI entry point, argument parsing, command dispatch
+
+MOD: cli
+  FILE: main.rs
+  OWN: arg-parsing; command-dispatch; error-display
+  BND: Dispatch only — no business logic, delegates to command modules
+  DEP: commands/init; commands/validate; commands/coverage; commands/owns; commands/stale; commands/drift; commands/fitness; commands/rules; commands/stories; commands/mermaid; commands/index; context/context; resolve/resolve; depgraph/depgraph; llmcode/llmcode; lmindex/lmindex

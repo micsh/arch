@@ -1,22 +1,25 @@
-use crate::schema::{self, Architecture, ContainerDetail, Stories};
+use crate::arch_parser;
+use crate::schema::{
+    self, Architecture, ArchSource, ArchSourceContainer, ArchSourceModule,
+    Container, ContainerDetail, Module, Rule, Stories, Story, System,
+};
 use crate::resolve::ModuleIndex;
 use glob::Pattern;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Find architecture.yaml — checks architecture/architecture.yaml first, then root.
-pub fn find_arch_yaml() -> Result<PathBuf, String> {
+/// Find architecture/arch/system.arch from cwd.
+///
+/// ASSUMPTION: system.arch always lives at architecture/arch/system.arch relative to the
+/// project root (cwd). IF INVALID (monorepo root vs sub-project): accept root as parameter.
+pub fn find_system_arch() -> Result<PathBuf, String> {
     let root = std::env::current_dir().map_err(|e| e.to_string())?;
-    let nested = root.join("architecture").join("architecture.yaml");
-    if nested.exists() {
-        return Ok(nested);
+    let path = root.join("architecture").join("arch").join("system.arch");
+    if path.exists() {
+        return Ok(path);
     }
-    let flat = root.join("architecture.yaml");
-    if flat.exists() {
-        return Ok(flat);
-    }
-    Err("architecture.yaml not found. Run `arch init` first.".into())
+    Err("architecture/arch/system.arch not found. Run `arch init` first.".into())
 }
 
 /// File extensions that have import parsers (used by drift, stories, fitness).
@@ -31,42 +34,62 @@ pub const COVERAGE_EXTENSIONS: &[&str] = &[
 ];
 
 /// Loaded architecture context — the single entry point for all commands.
-/// Loads root YAML, all container details, ignore patterns, and optionally
-/// the module index and stories.
+/// Populated from `.arch` source files via arch_parser; no YAML dependency.
 pub struct ArchContext {
     pub root: PathBuf,
     pub arch: Architecture,
     pub details: HashMap<String, ContainerDetail>,
     pub ignore_patterns: Vec<Pattern>,
+    /// Stories parsed from the STORY: blocks in system.arch.
+    pub stories: Option<Stories>,
 }
 
 impl ArchContext {
-    /// Load architecture YAML and all container details.
+    /// Load architecture from `.arch` source files.
+    ///
+    /// Reads `architecture/arch/system.arch` (system declaration, rules, stories) and
+    /// `architecture/arch/containers/{id}.arch` (container + module definitions) for each
+    /// declared container. Converts to the canonical `Architecture` + `ContainerDetail` types.
     pub fn load() -> Result<Self, String> {
         let root = std::env::current_dir().map_err(|e| e.to_string())?;
-        let arch_path = find_arch_yaml()?;
 
-        let content = std::fs::read_to_string(&arch_path).map_err(|e| e.to_string())?;
-        let arch: Architecture =
-            serde_yaml::from_str(&content).map_err(|e| format!("Invalid architecture.yaml: {e}"))?;
+        let system_path = find_system_arch()?;
+        let system_content = std::fs::read_to_string(&system_path)
+            .map_err(|e| format!("Cannot read system.arch: {e}"))?;
+        let src = arch_parser::parse_system_arch(&system_content)?;
+
+        let stories = stories_from_source(&src);
+        let mut arch = arch_source_to_architecture(&src);
+
+        // Parse each declared container file
+        let containers_dir = root.join("architecture").join("arch").join("containers");
+        let mut details: HashMap<String, ContainerDetail> = HashMap::new();
+
+        for cont_id in &src.container_ids {
+            let cont_path = containers_dir.join(format!("{cont_id}.arch"));
+            if !cont_path.exists() {
+                continue; // validate will report this
+            }
+            let cont_content = std::fs::read_to_string(&cont_path)
+                .map_err(|e| format!("Cannot read {cont_id}.arch: {e}"))?;
+            let container = arch_parser::parse_container_arch(&cont_content, cont_id, &src.system_name)?;
+
+            // Back-fill container metadata into the Architecture containers list
+            if let Some(arch_cont) = arch.containers.iter_mut().find(|c| c.id == *cont_id) {
+                arch_cont.path = container.path.clone();
+                arch_cont.description = container.description.clone();
+                arch_cont.depends_on = container.depends_on.clone();
+                if let Some(ref proj) = container.project {
+                    arch_cont.project = Some(proj.clone());
+                }
+            }
+
+            details.insert(cont_id.clone(), container_to_detail(&container));
+        }
 
         let ignore_patterns = schema::compile_ignore_patterns(&arch.system.ignore);
 
-        let mut details: HashMap<String, ContainerDetail> = HashMap::new();
-        for container in &arch.containers {
-            let detail_path = root
-                .join("architecture")
-                .join(format!("{}.yaml", container.id));
-            if detail_path.exists() {
-                let detail_content =
-                    std::fs::read_to_string(&detail_path).map_err(|e| e.to_string())?;
-                let detail: ContainerDetail = serde_yaml::from_str(&detail_content)
-                    .map_err(|e| format!("Invalid {}: {e}", detail_path.display()))?;
-                details.insert(container.id.clone(), detail);
-            }
-        }
-
-        Ok(ArchContext { root, arch, details, ignore_patterns })
+        Ok(ArchContext { root, arch, details, ignore_patterns, stories: Some(stories) })
     }
 
     /// Build the module resolution index from loaded data.
@@ -74,16 +97,9 @@ impl ArchContext {
         ModuleIndex::build(&self.root, &self.arch, &self.details)
     }
 
-    /// Load stories from architecture/stories.yaml.
+    /// Return stories parsed during load(). No file I/O.
     pub fn load_stories(&self) -> Result<Option<Stories>, String> {
-        let stories_path = self.root.join("architecture").join("stories.yaml");
-        if !stories_path.exists() {
-            return Ok(None);
-        }
-        let content = std::fs::read_to_string(&stories_path).map_err(|e| e.to_string())?;
-        let stories: Stories = serde_yaml::from_str(&content)
-            .map_err(|e| format!("Invalid stories.yaml: {e}"))?;
-        Ok(Some(stories))
+        Ok(self.stories.clone())
     }
 
     /// Collect the canonical paths of all explicitly mapped module files.
@@ -102,6 +118,80 @@ impl ArchContext {
             }
         }
         mapped
+    }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// ArchSource → canonical schema type converters
+// ────────────────────────────────────────────────────────────────────────────
+
+fn arch_source_to_architecture(src: &ArchSource) -> Architecture {
+    // Container shells — path/description/depends_on are back-filled from container files
+    let containers = src.container_ids.iter().map(|id| Container {
+        id: id.clone(),
+        project: Some(src.system_name.clone()),
+        path: String::new(),
+        description: None,
+        depends_on: Vec::new(),
+        notes: None,
+    }).collect();
+
+    let rules = src.rules.iter().map(|r| Rule {
+        id: r.id.clone(),
+        rule_type: r.rule_type.clone(),
+        from: r.from.clone(),
+        to: if r.to.is_empty() {
+            None
+        } else {
+            Some(r.to.clone())
+        },
+        module: r.module.clone(),
+        modules: Vec::new(),
+        reason: r.reason.clone(),
+        constraint: r.constraint.clone(),
+        pattern: None,
+        allowed: r.allowed.clone(),
+    }).collect();
+
+    Architecture {
+        guidance: if src.guidance.is_empty() { None } else { Some(src.guidance.clone()) },
+        system: System {
+            name: src.system_name.clone(),
+            description: Some(src.system_description.clone()),
+            ignore: src.ignore.clone(),
+        },
+        containers,
+        rules,
+    }
+}
+
+fn stories_from_source(src: &ArchSource) -> Stories {
+    Stories {
+        stories: src.stories.iter().map(|s| Story {
+            id: s.id.clone(),
+            description: s.description.clone(),
+            flow: s.flow.clone(),
+        }).collect(),
+    }
+}
+
+fn container_to_detail(container: &ArchSourceContainer) -> ContainerDetail {
+    ContainerDetail {
+        modules: container.modules.iter().map(module_from_source).collect(),
+        notes: None,
+    }
+}
+
+fn module_from_source(m: &ArchSourceModule) -> Module {
+    Module {
+        id: m.id.clone(),
+        file: m.file.clone().unwrap_or_default(),
+        files: m.files.clone(),
+        owns: m.owns.clone(),
+        boundary: m.boundary.clone(),
+        depends_on: m.depends_on.clone(),
+        must_not_depend: Vec::new(),
+        routes: None,
     }
 }
 
@@ -172,3 +262,5 @@ pub fn print_json(value: &serde_json::Value) -> Result<(), String> {
     println!("{}", to_json(value)?);
     Ok(())
 }
+
+

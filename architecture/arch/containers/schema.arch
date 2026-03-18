@@ -1,0 +1,10 @@
+ARCH: 0.4
+CONT: schema
+PATH: src
+DEP:
+DESC: YAML type definitions shared by all commands
+
+MOD: schema
+  FILE: schema.rs
+  OWN: architecture-types; container-types; module-types; rule-types; story-types; pub-use-parsing; language-detection; identifier-normalization; path-utilities; pattern-utilities
+  BND: YAML type definitions and shared parsing/utility primitives — no I/O, no filesystem access

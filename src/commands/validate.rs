@@ -1,4 +1,5 @@
 use crate::context::{ArchContext, print_json};
+use crate::llmcode;
 use crate::schema::ContainerDetail;
 use std::path::Path;
 
@@ -9,8 +10,7 @@ pub struct ValidationResult {
 }
 
 /// Core validation logic — returns structured results without printing.
-pub fn check() -> Result<ValidationResult, String> {
-    let ctx = ArchContext::load()?;
+pub fn check(ctx: &ArchContext) -> Result<ValidationResult, String> {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -20,18 +20,18 @@ pub fn check() -> Result<ValidationResult, String> {
 
     let container_ids: Vec<&str> = ctx.arch.containers.iter().map(|c| c.id.as_str()).collect();
 
-    // Build set of all "container/module" IDs for cross-reference validation
-    let mut all_module_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for container in &ctx.arch.containers {
-        if let Some(detail) = ctx.details.get(&container.id) {
-            for module in &detail.modules {
-                all_module_ids.insert(format!("{}/{}", container.id, module.id));
-            }
-        }
-    }
+    // Build set of all "container/module" IDs — used for cross-reference and MOD: link validation
+    let all_module_ids: std::collections::HashSet<String> = ctx.arch.containers
+        .iter()
+        .flat_map(|c| {
+            ctx.details.get(&c.id).into_iter().flat_map(move |d| {
+                d.modules.iter().map(move |m| format!("{}/{}", c.id, m.id))
+            })
+        })
+        .collect();
 
     for container in &ctx.arch.containers {
-        if !ctx.root.join(&container.path).exists() {
+        if !container.path.is_empty() && !ctx.root.join(&container.path).exists() {
             errors.push(format!(
                 "Container '{}': path '{}' does not exist",
                 container.id, container.path
@@ -47,40 +47,68 @@ pub fn check() -> Result<ValidationResult, String> {
             }
         }
 
-        let detail_path = ctx.root
-            .join("architecture")
-            .join(format!("{}.yaml", container.id));
-        if !detail_path.exists() {
-            warnings.push(format!(
-                "Container '{}': no detail file at architecture/{}.yaml",
+        match ctx.details.get(&container.id) {
+            None => errors.push(format!(
+                "Container '{}': no module definition found (missing architecture/arch/containers/{}.arch)",
                 container.id, container.id
-            ));
-        } else {
-            validate_container_detail(&ctx.root, container, &detail_path, &mut errors, &mut warnings, &all_module_ids)?;
+            )),
+            Some(detail) => {
+                validate_container_detail(&ctx.root, container, detail, &mut errors, &mut warnings, &all_module_ids)?;
+            }
         }
     }
 
-    // Check for orphan container YAML files
-    let arch_dir = ctx.root.join("architecture");
-    if arch_dir.is_dir() {
+    // Check for orphan container .arch files (stem not matching any declared container)
+    let containers_dir = ctx.root.join("architecture").join("arch").join("containers");
+    if containers_dir.is_dir() {
         let known_ids: std::collections::HashSet<String> =
             ctx.arch.containers.iter().map(|c| c.id.clone()).collect();
-        let special_files = ["architecture.yaml", "stories.yaml"];
-        if let Ok(entries) = std::fs::read_dir(&arch_dir) {
+        if let Ok(entries) = std::fs::read_dir(&containers_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.ends_with(".yaml") || name.ends_with(".yml") {
-                    if special_files.contains(&name.as_str()) {
-                        continue;
-                    }
-                    let id = name.trim_end_matches(".yaml").trim_end_matches(".yml");
+                if name.ends_with(".arch") {
+                    let id = name.trim_end_matches(".arch");
                     if !known_ids.contains(id) {
                         warnings.push(format!(
-                            "Orphan file 'architecture/{name}' — no container with id '{id}' in architecture.yaml"
+                            "Orphan file 'architecture/arch/containers/{name}' — no container with id '{id}' declared in system.arch"
                         ));
                     }
                 }
             }
+        }
+    }
+
+    // Validate MOD: links and CNTR: module references in .llmcode files
+    let llmcode_files_list = llmcode::discover_llmcode_files(&ctx.root);
+    for path in &llmcode_files_list {
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                warnings.push(format!(
+                    "llmcode: could not read '{}': {e}",
+                    path.display()
+                ));
+                continue;
+            }
+        };
+        match llmcode::parse_llmcode_file(path, &content) {
+            Ok(parsed) => {
+                // MOD: link validation → hard errors
+                for err in llmcode::validate_mod_links(&[parsed], &all_module_ids) {
+                    errors.push(format!("{err}"));
+                }
+                // CNTR: module reference validation → warnings only (symbols change; stale refs expected)
+                // Re-parse for CNTR entries (parsed was moved into validate_mod_links)
+                if let Ok(reparsed) = llmcode::parse_llmcode_file(path, &content) {
+                    for block in &reparsed.blocks {
+                        for cntr in &block.cntr {
+                            validate_cntr_side(&cntr.left_module, &cntr.constraint, path, &all_module_ids, &mut warnings);
+                            validate_cntr_side(&cntr.right_module, &cntr.constraint, path, &all_module_ids, &mut warnings);
+                        }
+                    }
+                }
+            }
+            Err(e) => warnings.push(format!("llmcode: parse error in '{}': {e}", path.display())),
         }
     }
 
@@ -91,8 +119,27 @@ pub fn check() -> Result<ValidationResult, String> {
     })
 }
 
+/// Check one side of a CNTR: entry for a stale module reference.
+/// CNTR: sides use "module::symbol" format — only validates the module prefix if it contains '/'.
+fn validate_cntr_side(
+    side: &str,
+    constraint: &str,
+    path: &std::path::Path,
+    valid_ids: &std::collections::HashSet<String>,
+    warnings: &mut Vec<String>,
+) {
+    let module_part = side.split("::").next().unwrap_or(side);
+    if module_part.contains('/') && !valid_ids.contains(module_part) {
+        warnings.push(format!(
+            "llmcode CNTR: '{}' — '{}' not found in arch modules (stale reference, constraint: {})",
+            path.display(), module_part, constraint
+        ));
+    }
+}
+
 pub fn run(json: bool) -> Result<(), String> {
-    let result = check()?;
+    let ctx = ArchContext::load()?;
+    let result = check(&ctx)?;
 
     if json {
         let output = serde_json::json!({
@@ -132,15 +179,11 @@ pub fn run(json: bool) -> Result<(), String> {
 fn validate_container_detail(
     root: &Path,
     container: &crate::schema::Container,
-    detail_path: &Path,
+    detail: &ContainerDetail,
     errors: &mut Vec<String>,
     warnings: &mut Vec<String>,
     all_module_ids: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
-    let content = std::fs::read_to_string(detail_path).map_err(|e| e.to_string())?;
-    let detail: ContainerDetail =
-        serde_yaml::from_str(&content).map_err(|e| format!("Invalid {}: {e}", detail_path.display()))?;
-
     let container_root = root.join(&container.path);
 
     // Check for duplicate module IDs within this container

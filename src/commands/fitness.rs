@@ -6,37 +6,40 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Serialize)]
-struct RuleResult {
-    rule_id: String,
-    passed: bool,
-    violations: Vec<String>,
+pub struct RuleResult {
+    pub rule_id: String,
+    pub passed: bool,
+    pub violations: Vec<String>,
 }
 
-pub fn run(json: bool) -> Result<(), String> {
-    let ctx = ArchContext::load()?;
+/// Aggregated fitness check result — returned by check() for composition by stale.
+pub struct FitnessResult {
+    pub results: Vec<RuleResult>,
+    pub passed: usize,
+    pub failed: usize,
+    pub manual: usize,
+}
 
+/// Core fitness logic — evaluates all rules and returns structured results.
+pub fn check(ctx: &ArchContext) -> Result<FitnessResult, String> {
     if ctx.arch.rules.is_empty() {
-        println!("ℹ️  No rules defined in architecture.yaml");
-        return Ok(());
+        return Ok(FitnessResult { results: Vec::new(), passed: 0, failed: 0, manual: 0 });
     }
 
-    // Use the shared ModuleIndex instead of a parallel resolver
     let index = ctx.build_index();
-    let actual_deps = depgraph::build_dep_graph(&ctx, &index, false);
+    let actual_deps = depgraph::build_dep_graph(ctx, &index, false);
 
     let mut results: Vec<RuleResult> = Vec::new();
-
     for rule in &ctx.arch.rules {
         match rule.rule_type.as_str() {
             "no_dependency" => {
                 results.push(evaluate_no_dependency(rule, &actual_deps, &ctx.arch, &ctx.details));
             }
             "no_import_from" => {
-                results.push(evaluate_no_import_from(rule, &ctx));
+                results.push(evaluate_no_import_from(rule, ctx));
             }
-            // ASSUMPTION: boundary rules are not automatically enforceable — they are advisory/documentary only.
-            // IF THIS CHANGES: implement structural boundary checking by comparing module file ownership
-            // against declared container paths and flagging cross-boundary file references.
+            // ASSUMPTION: boundary rules are not automatically enforceable — advisory only.
+            // IF THIS CHANGES: implement structural boundary checking.
             "boundary" => {
                 results.push(RuleResult {
                     rule_id: rule.id.clone(),
@@ -46,6 +49,9 @@ pub fn run(json: bool) -> Result<(), String> {
                         rule.constraint.as_deref().unwrap_or("no constraint specified")
                     )],
                 });
+            }
+            "restrict_callers_to" => {
+                results.push(evaluate_restrict_callers_to(rule, &actual_deps, &ctx.details));
             }
             other => {
                 results.push(RuleResult {
@@ -57,7 +63,23 @@ pub fn run(json: bool) -> Result<(), String> {
         }
     }
 
-    report_fitness(json, &results)
+    let passed = results.iter().filter(|r| r.passed).count();
+    let failed = results.iter().filter(|r| !r.passed).count();
+    let manual = results.iter().filter(|r| r.passed && !r.violations.is_empty()).count();
+
+    Ok(FitnessResult { results, passed, failed, manual })
+}
+
+pub fn run(json: bool) -> Result<(), String> {
+    let ctx = ArchContext::load()?;
+
+    if ctx.arch.rules.is_empty() {
+        println!("ℹ️  No rules defined in architecture.yaml");
+        return Ok(());
+    }
+
+    let result = check(&ctx)?;
+    report_fitness(json, &result.results)
 }
 
 fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
@@ -140,11 +162,7 @@ fn evaluate_no_dependency(
     };
 
     let to_targets: Vec<String> = match &rule.to {
-        Some(serde_yaml::Value::String(s)) => vec![s.clone()],
-        Some(serde_yaml::Value::Sequence(seq)) => seq
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .collect(),
+        Some(targets) if !targets.is_empty() => targets.clone(),
         _ => {
             return RuleResult {
                 rule_id: rule.id.clone(),
@@ -177,6 +195,66 @@ fn evaluate_no_dependency(
                         "{from_module} → {to_name} (container-level reference)"
                     ));
                 }
+            }
+        }
+    }
+
+    RuleResult {
+        rule_id: rule.id.clone(),
+        passed: violations.is_empty(),
+        violations,
+    }
+}
+
+/// Evaluate a `restrict_callers_to` rule: only modules in `rule.allowed` may depend on `rule.module`.
+///
+/// // ASSUMPTION: import-graph level only — interface injection bypasses this rule.
+/// // IF INVALID: rule produces false negatives. Mitigation: none at import-graph level.
+fn evaluate_restrict_callers_to(
+    rule: &Rule,
+    actual_deps: &HashMap<String, HashSet<String>>,
+    details: &HashMap<String, ContainerDetail>,
+) -> RuleResult {
+    let protected = match &rule.module {
+        Some(m) => m,
+        None => {
+            return RuleResult {
+                rule_id: rule.id.clone(),
+                passed: false,
+                violations: vec!["Rule missing 'module' field".to_string()],
+            }
+        }
+    };
+
+    if rule.allowed.is_empty() {
+        return RuleResult {
+            rule_id: rule.id.clone(),
+            passed: false,
+            violations: vec![
+                "allowed list is empty; use no_dependency if you intend to forbid all callers"
+                    .to_string(),
+            ],
+        };
+    }
+
+    let protected_modules = resolve_rule_target(protected, details);
+    let allowed_lower: HashSet<String> = rule.allowed.iter().map(|a| a.to_lowercase()).collect();
+
+    let mut violations = Vec::new();
+
+    for (src_module, deps) in actual_deps {
+        // Skip if this module is in the allowed list
+        if allowed_lower.contains(src_module.as_str()) {
+            continue;
+        }
+        // Check if it depends on any of the protected module's resolved targets
+        for protected_module in &protected_modules {
+            if deps.contains(protected_module) {
+                violations.push(format!(
+                    "{src_module} → {protected_module} (only {:?} may call {protected})",
+                    rule.allowed
+                ));
+                break;
             }
         }
     }

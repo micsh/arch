@@ -1,0 +1,701 @@
+{
+  "containers": [
+    {
+      "depends_on": [
+        "schema",
+        "scanner",
+        "commands",
+        "imports",
+        "context",
+        "depgraph"
+      ],
+      "description": "CLI entry point, argument parsing, command dispatch",
+      "id": "cli",
+      "modules": [
+        {
+          "boundary": "Dispatch only — no business logic, delegates to command modules",
+          "depends_on": [
+            "commands/init",
+            "commands/validate",
+            "commands/coverage",
+            "commands/owns",
+            "commands/stale",
+            "commands/drift",
+            "commands/fitness",
+            "commands/rules",
+            "commands/stories",
+            "commands/mermaid",
+            "commands/index",
+            "context/context",
+            "resolve/resolve",
+            "depgraph/depgraph",
+            "llmcode/llmcode",
+            "lmindex/lmindex"
+          ],
+          "file": "main.rs",
+          "files": [],
+          "id": "cli/cli",
+          "owns": [
+            "arg-parsing",
+            "command-dispatch",
+            "error-display"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [],
+      "description": "YAML type definitions shared by all commands",
+      "id": "schema",
+      "modules": [
+        {
+          "boundary": "YAML type definitions and shared parsing/utility primitives — no I/O, no filesystem access",
+          "depends_on": [],
+          "file": "schema.rs",
+          "files": [],
+          "id": "schema/schema",
+          "owns": [
+            "architecture-types",
+            "container-types",
+            "module-types",
+            "rule-types",
+            "story-types",
+            "pub-use-parsing",
+            "language-detection",
+            "identifier-normalization",
+            "path-utilities",
+            "pattern-utilities"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "schema",
+        "resolve",
+        "arch_parser"
+      ],
+      "description": "Shared architecture loading — ArchContext, file walking, JSON output",
+      "id": "context",
+      "modules": [
+        {
+          "boundary": "Shared infrastructure — no command-specific logic",
+          "depends_on": [
+            "schema/schema",
+            "resolve/resolve",
+            "arch_parser/arch_parser"
+          ],
+          "file": "context.rs",
+          "files": [],
+          "id": "context/context",
+          "owns": [
+            "arch-context",
+            "arch-loading",
+            "container-detail-loading",
+            "file-walking",
+            "json-output",
+            "source-extensions"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [],
+      "description": "Project type detection by file presence",
+      "id": "scanner",
+      "modules": [
+        {
+          "boundary": "Detection by file presence only — never reads file contents",
+          "depends_on": [],
+          "file": "scanner.rs",
+          "files": [],
+          "id": "scanner/scanner",
+          "owns": [
+            "project-type-detection",
+            "source-dir-scanning",
+            "language-identification"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [],
+      "description": "Source file import extraction — language-specific parsers",
+      "id": "imports",
+      "modules": [
+        {
+          "boundary": "Pure text extraction — reads source content, returns import strings. No filesystem I/O, no resolution.",
+          "depends_on": [],
+          "file": "imports.rs",
+          "files": [],
+          "id": "imports/imports",
+          "owns": [
+            "import-extraction",
+            "language-parsers",
+            "fsharp-imports",
+            "csharp-imports",
+            "rust-imports",
+            "typescript-imports",
+            "python-imports",
+            "go-imports"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "schema"
+      ],
+      "description": "Shared import resolution — ModuleIndex and external import detection",
+      "id": "resolve",
+      "modules": [
+        {
+          "boundary": "Pure resolution logic — no I/O, no command-specific behavior",
+          "depends_on": [
+            "schema/schema"
+          ],
+          "file": "resolve.rs",
+          "files": [],
+          "id": "resolve/resolve",
+          "owns": [
+            "module-index",
+            "import-resolution",
+            "external-import-detection",
+            "keyword-indexing"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "context",
+        "imports",
+        "resolve"
+      ],
+      "description": "Shared dep-graph builder — scans source imports and resolves module dependencies",
+      "id": "depgraph",
+      "modules": [
+        {
+          "boundary": "Shared utility — depends on context, imports, and resolve; never on commands",
+          "depends_on": [
+            "context/context",
+            "imports/imports",
+            "resolve/resolve"
+          ],
+          "file": "depgraph.rs",
+          "files": [],
+          "id": "depgraph/depgraph",
+          "owns": [
+            "dep-graph-building",
+            "import-scanning",
+            "module-dependency-resolution"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "schema"
+      ],
+      "description": ".arch source file discovery and parsing — pure leaf, no ArchContext dependency",
+      "id": "arch_parser",
+      "modules": [
+        {
+          "boundary": "Pure leaf — depends only on schema; never calls ArchContext::load(); never writes files",
+          "depends_on": [
+            "schema/schema"
+          ],
+          "file": "arch_parser.rs",
+          "files": [],
+          "id": "arch_parser/arch_parser",
+          "owns": [
+            ".arch-file-discovery",
+            "system.arch-parsing",
+            "container-.arch-parsing",
+            "ArchSource-output"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "schema"
+      ],
+      "description": ".llmcode file discovery, parsing, and MOD link validation — pure leaf utility",
+      "id": "llmcode",
+      "modules": [
+        {
+          "boundary": "Pure leaf — discovers, parses, and validates .llmcode files; no resolution logic",
+          "depends_on": [
+            "schema/schema"
+          ],
+          "file": "llmcode.rs",
+          "files": [],
+          "id": "llmcode/llmcode",
+          "owns": [
+            "llmcode-parsing",
+            "mod-link-extraction",
+            "llmcode-discovery",
+            "structural-validation"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "context",
+        "llmcode",
+        "depgraph",
+        "resolve"
+      ],
+      "description": "arch.index.json and llmcode.index.json compilation — shared analysis layer",
+      "id": "lmindex",
+      "modules": [
+        {
+          "boundary": "Analysis layer — consumes depgraph, context, llmcode, resolve; emits JSON indexes; must not depend on commands",
+          "depends_on": [
+            "context/context",
+            "llmcode/llmcode",
+            "depgraph/depgraph",
+            "resolve/resolve"
+          ],
+          "file": "lmindex.rs",
+          "files": [],
+          "id": "lmindex/lmindex",
+          "owns": [
+            "arch-index-compilation",
+            "llmcode-index-compilation",
+            "used-by-generation"
+          ]
+        }
+      ],
+      "path": "src"
+    },
+    {
+      "depends_on": [
+        "schema",
+        "imports",
+        "resolve",
+        "context",
+        "depgraph",
+        "lmindex"
+      ],
+      "description": "Subcommand implementations — each is self-contained",
+      "id": "commands",
+      "modules": [
+        {
+          "boundary": "Scaffolding only — uses scanner for detection, schema for types",
+          "depends_on": [
+            "scanner/scanner",
+            "schema/schema"
+          ],
+          "file": "init.rs",
+          "files": [],
+          "id": "commands/init",
+          "owns": [
+            "project-scaffolding",
+            "template-generation",
+            "directory-scanning",
+            "deep-inference",
+            "project-reference-parsing",
+            "naming-classification"
+          ]
+        },
+        {
+          "boundary": "Read-only validation — never modifies files",
+          "depends_on": [
+            "context/context",
+            "llmcode/llmcode"
+          ],
+          "file": "validate.rs",
+          "files": [],
+          "id": "commands/validate",
+          "owns": [
+            "yaml-integrity",
+            "cross-ref-validation",
+            "file-existence-checks",
+            "mod-link-validation"
+          ]
+        },
+        {
+          "boundary": "Read-only analysis — walks filesystem, compares to YAML",
+          "depends_on": [
+            "context/context"
+          ],
+          "file": "coverage.rs",
+          "files": [],
+          "id": "commands/coverage",
+          "owns": [
+            "unmapped-file-detection",
+            "source-file-walking"
+          ]
+        },
+        {
+          "boundary": "Read-only query — searches owns fields, module ids, file names",
+          "depends_on": [
+            "context/context"
+          ],
+          "file": "owns.rs",
+          "files": [],
+          "id": "commands/owns",
+          "owns": [
+            "concept-lookup",
+            "module-search",
+            "ownership-queries"
+          ]
+        },
+        {
+          "boundary": "Composite command — delegates to validate, coverage, drift, fitness, lmindex — no own logic beyond combining results",
+          "depends_on": [
+            "commands/validate",
+            "commands/coverage",
+            "commands/drift",
+            "commands/fitness",
+            "context/context",
+            "lmindex/lmindex",
+            "llmcode/llmcode"
+          ],
+          "file": "stale.rs",
+          "files": [],
+          "id": "commands/stale",
+          "owns": [
+            "architecture-health-check",
+            "combined-validation",
+            "fitness-composition",
+            "llmcode-staleness-check"
+          ]
+        },
+        {
+          "boundary": "Read-only analysis — scans source imports vs declared depends_on",
+          "depends_on": [
+            "context/context",
+            "imports/imports",
+            "resolve/resolve"
+          ],
+          "file": "drift.rs",
+          "files": [],
+          "id": "commands/drift",
+          "owns": [
+            "dependency-drift-detection",
+            "undeclared-dependency-detection"
+          ]
+        },
+        {
+          "boundary": "Read-only analysis — evaluates architecture rules against actual imports",
+          "depends_on": [
+            "context/context",
+            "imports/imports",
+            "depgraph/depgraph"
+          ],
+          "file": "fitness.rs",
+          "files": [],
+          "id": "commands/fitness",
+          "owns": [
+            "rule-validation",
+            "no-dependency-enforcement",
+            "boundary-rule-reporting"
+          ]
+        },
+        {
+          "boundary": "Read-only analysis — verifies story flows against actual imports",
+          "depends_on": [
+            "context/context",
+            "depgraph/depgraph"
+          ],
+          "file": "stories.rs",
+          "files": [],
+          "id": "commands/stories",
+          "owns": [
+            "story-flow-verification",
+            "bidirectional-connection-check"
+          ]
+        },
+        {
+          "boundary": "Read-only query — loads architecture and formats rule data",
+          "depends_on": [
+            "context/context"
+          ],
+          "file": "rules.rs",
+          "files": [],
+          "id": "commands/rules",
+          "owns": [
+            "rule-listing",
+            "fitness-rule-queries",
+            "module-constraint-display"
+          ]
+        },
+        {
+          "boundary": "Re-exports only",
+          "depends_on": [],
+          "file": "mod.rs",
+          "files": [],
+          "id": "commands/mod",
+          "owns": [
+            "command-module-exports"
+          ]
+        },
+        {
+          "boundary": "Read-only — generates Mermaid text from architecture, never modifies files",
+          "depends_on": [
+            "context/context"
+          ],
+          "file": "mermaid.rs",
+          "files": [],
+          "id": "commands/mermaid",
+          "owns": [
+            "diagram-generation",
+            "container-diagrams",
+            "story-flowcharts"
+          ]
+        },
+        {
+          "boundary": "Read-only command — delegates compilation to lmindex; outputs JSON index files",
+          "depends_on": [
+            "context/context",
+            "lmindex/lmindex",
+            "llmcode/llmcode"
+          ],
+          "file": "index.rs",
+          "files": [],
+          "id": "commands/index",
+          "owns": [
+            "index-compilation-command",
+            "arch-index-json-output",
+            "llmcode-index-json-output"
+          ]
+        },
+        {
+          "boundary": "Thin orchestrator — calls lmindex::build_context_pack(); no resolution logic here",
+          "depends_on": [
+            "context/context",
+            "lmindex/lmindex",
+            "llmcode/llmcode"
+          ],
+          "file": "contextpack.rs",
+          "files": [],
+          "id": "commands/contextcmd",
+          "owns": [
+            "context-pack-resolution-command",
+            "file-to-module-context-pack-output"
+          ]
+        },
+        {
+          "boundary": "Mutation command — rewrites MOD: references in .llmcode files; uses context with .ok() (optional)",
+          "depends_on": [
+            "llmcode/llmcode"
+          ],
+          "file": "rename.rs",
+          "files": [],
+          "id": "commands/rename",
+          "owns": [
+            "mod-id-migration",
+            "llmcode-text-rewrite"
+          ]
+        },
+        {
+          "boundary": "Display only — emits LLMCODE_SPEC_VERSION; no file I/O",
+          "depends_on": [
+            "schema/schema"
+          ],
+          "file": "spec.rs",
+          "files": [],
+          "id": "commands/spec",
+          "owns": [
+            "spec-version-display",
+            "llmcode-spec-version-command"
+          ]
+        }
+      ],
+      "path": "src/commands"
+    }
+  ],
+  "rules": [
+    {
+      "id": "schema-independence",
+      "reason": "Schema types are pure data — no logic dependencies",
+      "type": "no_dependency"
+    },
+    {
+      "id": "scanner-independence",
+      "reason": "Scanner is a leaf utility — only used by init command",
+      "type": "no_dependency"
+    },
+    {
+      "id": "imports-independence",
+      "reason": "Import extraction is a pure leaf utility — no logic dependencies",
+      "type": "no_dependency"
+    },
+    {
+      "id": "resolve-independence",
+      "reason": "Resolution is a shared utility — depends only on schema types",
+      "type": "no_dependency"
+    },
+    {
+      "id": "context-independence",
+      "reason": "Context is a shared loader — depends only on schema and resolve",
+      "type": "no_dependency"
+    },
+    {
+      "id": "init-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "validate-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "coverage-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "owns-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "drift-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "context-command-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "rename-command-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "spec-command-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "llmcode-independence",
+      "reason": "llmcode is a pure leaf utility — depends only on schema, mirrors imports.rs position in the layer model",
+      "type": "no_dependency"
+    },
+    {
+      "id": "lmindex-independence",
+      "reason": "lmindex is a shared analysis layer — must not depend on commands to remain independently consumable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "index-command-isolation",
+      "reason": "Leaf commands do not import other commands — each is independently testable",
+      "type": "no_dependency"
+    },
+    {
+      "id": "arch-parser-independence",
+      "reason": "arch_parser is a pure leaf — depends only on schema; no context loader, no command logic",
+      "type": "no_dependency"
+    },
+    {
+      "id": "arch-parser-callers",
+      "reason": "Only context may call arch_parser — arch source loading is exclusively context.rs's responsibility",
+      "type": "restrict_callers_to"
+    }
+  ],
+  "stories": [
+    {
+      "description": "User scaffolds architecture for a new project",
+      "flow": [
+        "cli/cli",
+        "scanner/scanner",
+        "commands/init"
+      ],
+      "id": "user-runs-init"
+    },
+    {
+      "description": "User checks architecture integrity after edits",
+      "flow": [
+        "cli/cli",
+        "commands/validate"
+      ],
+      "id": "user-validates"
+    },
+    {
+      "description": "User finds which module owns a concept before editing",
+      "flow": [
+        "cli/cli",
+        "commands/owns"
+      ],
+      "id": "user-queries-ownership"
+    },
+    {
+      "description": "User finds unmapped source files",
+      "flow": [
+        "cli/cli",
+        "commands/coverage"
+      ],
+      "id": "user-checks-coverage"
+    },
+    {
+      "description": "User checks overall architecture health (validate + coverage combined)",
+      "flow": [
+        "cli/cli",
+        "commands/stale"
+      ],
+      "id": "user-checks-staleness"
+    },
+    {
+      "description": "User detects undeclared or forbidden dependencies by scanning source imports",
+      "flow": [
+        "cli/cli",
+        "commands/drift"
+      ],
+      "id": "user-checks-drift"
+    },
+    {
+      "description": "User validates architectural rules against actual code",
+      "flow": [
+        "cli/cli",
+        "commands/fitness"
+      ],
+      "id": "user-checks-fitness"
+    },
+    {
+      "description": "User verifies that story flows are backed by real import connections",
+      "flow": [
+        "cli/cli",
+        "commands/stories"
+      ],
+      "id": "user-checks-stories"
+    },
+    {
+      "description": "User generates Mermaid architecture diagrams for documentation",
+      "flow": [
+        "cli/cli",
+        "commands/mermaid"
+      ],
+      "id": "user-generates-diagrams"
+    },
+    {
+      "description": "User scaffolds architecture with inferred modules from project files",
+      "flow": [
+        "cli/cli",
+        "scanner/scanner",
+        "commands/init"
+      ],
+      "id": "user-deep-init"
+    }
+  ],
+  "system": {
+    "description": "Architecture-as-code CLI — validate, query, and maintain architecture YAML for any codebase",
+    "name": "arch"
+  }
+}

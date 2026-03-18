@@ -8,3 +8,7 @@ pub mod fitness;
 pub mod stories;
 pub mod mermaid;
 pub mod rules;
+pub mod index;
+pub mod spec;
+pub mod rename;
+pub mod contextpack;

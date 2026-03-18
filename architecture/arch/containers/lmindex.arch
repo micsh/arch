@@ -1,0 +1,11 @@
+ARCH: 0.4
+CONT: lmindex
+PATH: src
+DEP: context; llmcode; depgraph; resolve
+DESC: arch.index.json and llmcode.index.json compilation — shared analysis layer
+
+MOD: lmindex
+  FILE: lmindex.rs
+  OWN: arch-index-compilation; llmcode-index-compilation; used-by-generation
+  BND: Analysis layer — consumes depgraph, context, llmcode, resolve; emits JSON indexes; must not depend on commands
+  DEP: context/context; llmcode/llmcode; depgraph/depgraph; resolve/resolve

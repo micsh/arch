@@ -1,0 +1,21 @@
+FILE: stale.rs
+MOD: commands/stale
+OWNS: composite health check — sequences validate + coverage + drift into one command
+PROFILE: [io]
+CHANGE-FREQUENCY: volatile
+
+run: bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, validate::check, coverage::check, drift::check
+  note: section headers [validate]/[coverage]/[drift] only printed when that section has issues
+
+CNTR: stale::run ↔ validate::check: ValidationResult fields (errors, warnings, container_count) must stay in sync — stale uses them directly
+CNTR: stale::run ↔ coverage::check: CoverageResult.unmapped field must stay Vec<String> — stale iterates it directly
+CNTR: stale::run ↔ drift::check: DriftResult + DriftItem fields (items, scanned_count, kind) must stay in sync — stale filters by kind=="forbidden"
+CNTR: stale::run ↔ drift::DriftItem: field names (module_id, file, import_raw, line_number, target_module, kind) serialized directly into stale JSON
+
+DEPENDS-ON: context, commands/validate, commands/coverage, commands/drift
+
+KEY-INVARIANTS:
+- exit code 1 on validate errors OR drift forbidden violations; unmapped files and undeclared deps are warnings (exit 0) — matches standalone command behaviour
+- stale is explicitly excluded from commands-isolation fitness rules — it is the only command that legitimately imports peers
+

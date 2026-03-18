@@ -1,0 +1,15 @@
+FILE: owns.rs
+MOD: commands/owns
+OWNS: concept-to-module lookup — searches owns fields, module IDs, and file names
+PROFILE: [io, pure-core]
+CHANGE-FREQUENCY: stable
+
+run: &str * bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load
+  note: case-insensitive substring match on owns[], module.id, module.file; deduplicates matches by module path
+
+DEPENDS-ON: context
+
+KEY-INVARIANTS:
+- deduplication is by module path string — a module matched by owns AND by module.id only appears once in output
+

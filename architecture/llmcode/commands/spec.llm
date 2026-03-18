@@ -1,0 +1,14 @@
+FILE: spec.rs
+MOD: commands/spec
+OWNS: spec-version-display; llmcode-spec-command; arch-spec-command
+PROFILE: [pure-core]
+CHANGE-FREQUENCY: stable
+
+run: bool * bool → Result<(), String> [pure]
+  note: --llmcode prints LLMCODE_SPEC constant; --arch prints ARCH_SPEC constant; no flags prints usage listing both; both flags prints both specs
+
+DEPENDS-ON: schema
+
+KEY-INVARIANTS:
+- LLMCODE_SPEC and ARCH_SPEC constants in schema.rs are the source of truth for grammar documentation — spec::run() is the user-visible contract for those specs
+- Both specs are bundled as compile-time constants (DR-01) — no file I/O required; spec works offline

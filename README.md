@@ -1,6 +1,6 @@
 # arch
 
-Architecture-as-code for any codebase. Define, query, and validate your project structure using YAML — designed for humans and AI agents alike.
+Architecture-as-code for any codebase. Define, query, and validate your project structure using `.arch` source files — designed for humans and AI agents alike.
 
 ## Why
 
@@ -67,101 +67,85 @@ arch drift --json
 ```
 your-project/
   architecture/
-    architecture.yaml            # System map: containers, rules, guidance
-    stories.yaml                 # Cross-cutting flows
-    backend.yaml                 # Per-container module details
-    frontend.yaml
-    ...
+    arch/
+      system.arch              # System map: containers, rules, stories, guidance
+      containers/
+        backend.arch           # Per-container module details
+        frontend.arch
+        ...
+    llmcode/
+      backend/
+        auth.llm               # Per-module AI agent documentation
+      ...
 ```
 
-### `architecture.yaml` — The Map
+### `system.arch` — The Map
 
-```yaml
-guidance: |
-  Before making code changes, read the relevant container YAML.
-  After changes, update ownership and dependencies if they changed.
+```
+GUIDE:
+Before making code changes, read the relevant container .arch file.
+After changes, update ownership and dependencies if they changed.
+ENDGUIDE
 
-system:
-  name: MyProject
-  description: A web application with API and frontend
-  ignore:
-    - "tests/**"
-    - "**/*.test.ts"
-    - "scripts/**"
+SYSTEM: MyProject
+DESC: A web application with API and frontend
+IGNORE: tests/**; **/*.test.ts; scripts/**
 
-containers:
-  - id: backend
-    path: src/backend
-    description: REST API and business logic
-    depends_on: []
+CONT: backend | src/backend | REST API and business logic
+CONT: frontend | src/frontend | React UI | depends_on: backend
 
-  - id: frontend
-    path: src/frontend
-    description: React UI
-    depends_on: [backend]
+RULE: backend-independence | no_dependency | from: backend | to: frontend
+  "Backend must not depend on frontend"
 
-rules:
-  - id: backend-independence
-    type: no_dependency
-    from: backend
-    to: frontend
-    reason: "Backend must not depend on frontend"
+STORY: user-login | User submits credentials → validated → token issued → stored
+  frontend/login-page → backend/auth → backend/database → backend/auth
 ```
 
-### `architecture/<container>.yaml` — The Details
+### `containers/backend.arch` — The Details
 
-```yaml
-# backend.yaml
-modules:
-  - id: auth
-    file: auth/mod.rs
-    owns: [authentication, token-validation, session-management]
-    depends_on: [backend/database]
-    boundary: "Auth logic only — no direct DB queries, use database module"
+```
+MOD: auth | file: auth/mod.rs
+OWN: authentication; token-validation; session-management
+DEP: backend/database
+BND: Auth logic only — no direct DB queries, use database module
 
-  - id: database
-    file: db/mod.rs
-    owns: [connection-pool, migrations, query-execution]
-    must_not_depend: [backend/auth]
-    boundary: "Data access only — no business logic"
+MOD: database | file: db/mod.rs
+OWN: connection-pool; migrations; query-execution
+BND: Data access only — no business logic
 ```
 
-### `architecture/stories.yaml` — The Flows
+### Grammar Reference
 
-```yaml
-stories:
-  - id: user-login
-    description: User submits credentials → validated → token issued → stored
-    flow:
-      - frontend/login-page
-      - backend/auth
-      - backend/database
-      - backend/auth           # token generation
-```
+Run `arch spec --arch` to print the full `.arch` grammar reference in your terminal.
+Run `arch spec --llmcode` to print the full `.llm` grammar reference.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `arch init` | Scan project structure and generate initial architecture YAML |
+| `arch init` | Scan project structure and generate initial `.arch` files |
 | `arch init --deep` | Deep scan: infer modules from .csproj ProjectReference tags, Python packages |
-| `arch validate` | Check YAML integrity: files exist, cross-refs valid, schema correct |
+| `arch validate` | Check integrity: files exist, cross-refs valid, schema correct |
 | `arch coverage` | List source files not mapped to any module |
 | `arch owns <concept>` | Find which module owns a concept, file, or module ID |
 | `arch stale` | Full health check: validate + coverage + drift combined |
 | `arch drift` | Compare declared dependencies against actual code imports |
 | `arch fitness` | Validate architectural rules against actual code |
-| `arch rules` | List all fitness rules from architecture.yaml |
+| `arch rules` | List all fitness rules from `system.arch` |
 | `arch rules <module>` | Show what a module cannot depend on and what cannot depend on it |
 | `arch stories` | Verify story flows against actual import connections |
+| `arch context` | Print full architecture context as text (for AI agents) |
+| `arch spec` | Show available grammar spec flags |
+| `arch spec --arch` | Print full `.arch` grammar reference |
+| `arch spec --llmcode` | Print full `.llm` grammar reference |
 | `arch mermaid` | Generate Mermaid container dependency diagram |
 | `arch mermaid --brief` | Generate diagram with IDs only (no descriptions) |
-| `arch mermaid --stories` | Generate Mermaid flowcharts from stories.yaml |
+| `arch mermaid --stories` | Generate Mermaid flowcharts from story definitions |
 | `arch mermaid --c4` | Generate C4 Container diagram |
 | `arch mermaid --svg [FILE]` | Render to SVG (requires `mmdc`) |
 | `arch mermaid --update-readme` | Inject diagram into README.md between markers |
 
-All commands except `init` and `mermaid` support `--json` for structured output.
+All commands except `init`, `context`, `spec`, and `mermaid` support `--json` for structured output.
 
 ### `arch stale` — Full Health Check
 
@@ -217,7 +201,7 @@ Supports: F#, C#, Rust, TypeScript/JavaScript, Python, Go.
 
 ### `arch fitness` — Rule Validation
 
-Evaluates architecture rules from `architecture.yaml` against the actual codebase:
+Evaluates architecture rules from `system.arch` against the actual codebase:
 
 ```
 $ arch fitness
@@ -254,7 +238,7 @@ $ arch rules --json   # structured output
 
 ### `arch stories` — Flow Verification
 
-Validates that story flows in `stories.yaml` are backed by real import connections between modules:
+Validates that story flows in `system.arch` are backed by real import connections between modules:
 
 ```
 $ arch stories
@@ -274,63 +258,45 @@ For each consecutive pair (A→B) in a flow, stories checks that A imports from 
 
 ### Directory-Aware Coverage
 
-When a module's `file:` points to a recognized entry point (`__init__.py`, `mod.rs`, `index.ts`, etc.) or a project file (`.csproj`, `.fsproj`, `.vbproj`), all source files in that directory tree are automatically covered by that module. This means you only need one module per package/directory — use `owns:` for concepts, sub-modules for distinct boundary enforcement:
+When a module's `file:` points to a recognized entry point (`__init__.py`, `mod.rs`, `index.ts`, etc.) or a project file (`.csproj`, `.fsproj`, `.vbproj`), all source files in that directory tree are automatically covered by that module. This means you only need one module per package/directory — use `OWN:` for concepts, sub-modules for distinct boundary enforcement:
 
-```yaml
+```
 # Python: one module covers the entire models/ package and subpackages
-- id: models
-  file: models/__init__.py
-  owns: [market-snapshot, account-state, trade-decision, order-request]
-  boundary: "Pure data structures only — no logic, no I/O"
-  depends_on: []
+MOD: models | file: models/__init__.py
+OWN: market-snapshot; account-state; trade-decision; order-request
+BND: Pure data structures only — no logic, no I/O
 ```
 
 ### .NET Monorepo Pattern
 
 For .NET solutions, use one container per `.csproj` project. Point the module's `file:` at the `.csproj` — arch will recursively scan all `.cs`/`.fs` files in the project directory for imports:
 
-```yaml
-# architecture.yaml
-containers:
-  - id: data-processing
-    path: src/DataProcessing
-    project: MyApp.DataProcessing
-    description: Data pipeline and transformation
-    depends_on: [common]
-
-  - id: common
-    path: src/Common
-    project: MyApp.Common
-    description: Shared utilities and types
-    depends_on: []
+```
+# system.arch
+CONT: data-processing | src/DataProcessing | Data pipeline and transformation | proj: MyApp.DataProcessing
+CONT: common           | src/Common         | Shared utilities and types        | proj: MyApp.Common
 ```
 
-```yaml
-# data-processing.yaml
-modules:
-  - id: app
-    file: DataProcessing.Application.csproj
-    owns: [pipeline-orchestration, data-transforms]
-    depends_on: [common/shared]
+```
+# containers/data-processing.arch
+MOD: app | file: DataProcessing.Application.csproj
+OWN: pipeline-orchestration; data-transforms
+DEP: common/shared
 ```
 
-For containers with many sibling projects (e.g., `common/` with 30+ `.csproj` files), use `files:` to group multiple projects under one logical module:
+For containers with many sibling projects (e.g., `common/` with 30+ `.csproj` files), use `FILES:` to group multiple projects under one logical module:
 
-```yaml
-# common.yaml
-modules:
-  - id: shared
-    file: Common.Utilities/Common.Utilities.csproj
-    files:
-      - Common.Extensions/Common.Extensions.csproj
-      - Common.Helpers/Common.Helpers.csproj
-    owns: [utility-functions, extension-methods, helper-classes]
-    boundary: "Shared utilities only — no business logic"
+```
+# containers/common.arch
+MOD: shared | file: Common.Utilities/Common.Utilities.csproj
+FILES: Common.Extensions/Common.Extensions.csproj; Common.Helpers/Common.Helpers.csproj
+OWN: utility-functions; extension-methods; helper-classes
+BND: Shared utilities only — no business logic
 ```
 
 ### `arch mermaid` — Diagram Generation
 
-Generates Mermaid diagrams from your architecture YAML. Output is Mermaid text — paste into any Mermaid-compatible renderer (GitHub, VS Code, Mermaid Live Editor).
+Generates Mermaid diagrams from your architecture. Output is Mermaid text — paste into any Mermaid-compatible renderer (GitHub, VS Code, Mermaid Live Editor).
 
 ```bash
 # Container-level dependency diagram with module subgraphs
@@ -432,31 +398,51 @@ $ arch owns authentication --json
 }
 ```
 
+## Choosing an enforcement model
+
+arch has two enforcement mechanisms with different costs and trade-offs:
+
+| Mechanism | Best for | Requires |
+|-----------|----------|----------|
+| `no_import_from` | Denylist: "these modules must not import X" | Only a naming convention |
+| `Symmetric group isolation` | `no_dependency` rules, one per member — no container change |  |
+| `restrict_callers_to` | Allowlist: "only these modules may import X" | Module in its own container |
+
+> **Note:** when the peer group grows (e.g. a new command is added), the `no_dependency` ruleset must grow with it — one new rule per new member. This is the same maintenance cost as `no_import_from` in a peer-group context.
+
+**Decision guide:**
+1. **Correctness invariant** (a violation causes a bug, not just a style issue) → always use `restrict_callers_to` + own container
+2. **Allowed set ≤ forbidden set** → prefer `restrict_callers_to` + own container
+3. **Forbidden set < allowed set** → use `no_import_from`, no restructuring needed
+
+**Container isolation rule:** a new container is warranted when the module IS a distinct architectural concept — not just to make the rule expressible. Ask: would this module warrant its own container even if arch didn't exist?
+
+**Sub-module precision note:** `restrict_callers_to` operates at container level. If you need to restrict callers of a specific file within a shared container, isolate that file into its own container first.
+
+> **Yield vs. codebase health:** the number of `restrict_callers_to` rules a codebase needs correlates inversely with its architectural health. A full audit that yields one or two rules is a good sign, not a failure of the tool. The rule type is most valuable in codebases with auth boundaries, payment gateways, audit trail write points, initialization-once patterns, or accumulated coupling. If your architecture is already clean, you may not need it beyond your most critical invariants.
+
 ## Ignoring Files
 
-Use the `ignore` field in `system:` to exclude files from `coverage` and `drift` checks. Patterns use glob syntax:
+Use the `IGNORE:` field in `system.arch` to exclude files from `coverage` and `drift` checks. Patterns use glob syntax, separated by semicolons:
 
-```yaml
-system:
-  name: MyProject
-  ignore:
-    - "tests/**"           # test directories
-    - "**/*.test.ts"       # test files by naming convention
-    - "scripts/**"         # build/dev scripts
-    - "benchmarks/**"      # benchmark code
+```
+SYSTEM: MyProject
+IGNORE: tests/**; **/*.test.ts; scripts/**; benchmarks/**
 ```
 
 Ignored files won't be flagged as unmapped in `arch coverage` and won't be scanned for imports in `arch drift`.
 
 ## Designed for AI
 
-The `guidance:` block in `architecture.yaml` provides instructions for AI agents working on the codebase. Teams can wire it into agent prompts however they like — the field is there as a convention. Typical guidance tells agents:
+The `GUIDE:`/`ENDGUIDE` block in `system.arch` provides instructions for AI agents working on the codebase. Teams can wire it into agent prompts however they like — the field is there as a convention. Typical guidance tells agents:
 
-1. **Before coding** — read the relevant container YAML for ownership and boundaries
-2. **After coding** — update the YAML if ownership or dependencies changed
-3. **Cross-cutting changes** — check `stories.yaml` to understand impact
+1. **Before coding** — read the relevant container `.arch` file for ownership and boundaries
+2. **After coding** — update the `.arch` file if ownership or dependencies changed
+3. **Cross-cutting changes** — check story flows in `system.arch` to understand impact
 
-The YAML schema is intentionally simple — no special query language, no database, no build step. Agents read YAML files directly, the same way they read code.
+Use `arch context` to dump the full architecture as readable text — useful for injecting into agent context windows.
+
+The `.arch` format is intentionally simple — no special query language, no database, no build step. Agents read `.arch` files directly, the same way they read code.
 
 ### For AI-powered teams
 
@@ -466,7 +452,7 @@ When multiple AI agents work on a codebase, `arch` provides:
 - **Boundary enforcement** — what each module should and shouldn't do
 - **Drift detection** — real-time validation that code matches the architecture
 - **Impact analysis** — stories show which modules a change affects
-- **Self-describing** — the YAML defines its own usage instructions
+- **Grammar specs** — run `arch spec --arch` or `arch spec --llmcode` to get full grammar references for agents that need to read or write `.arch`/`.llm` files
 
 ## CI / Git Hooks
 
@@ -505,65 +491,89 @@ chmod +x .git/hooks/pre-commit
 
 The hook runs `arch validate` and `arch drift`, blocking the commit if violations are found. Skip temporarily with `git commit --no-verify`.
 
-## YAML Schema Reference
+## `.arch` File Format Reference
 
-### System Fields
+Architecture is declared in plain-text `.arch` files. Run `arch spec --arch` for the full grammar reference.
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | ✅ | Project name |
-| `description` | | What this system does |
-| `ignore` | | Glob patterns for files to exclude from coverage and drift checks |
+### `system.arch` — Top-Level Keywords
 
-### Container Fields
+| Keyword | Description |
+|---------|-------------|
+| `GUIDE:` / `ENDGUIDE` | Multi-line agent guidance block |
+| `SYSTEM: <name>` | Project name |
+| `DESC: <text>` | System description |
+| `IGNORE: <glob>; <glob>` | Glob patterns to exclude from coverage and drift |
+| `CONT: <id> \| <path> \| <desc>` | Declare a container |
+| `RULE: <id> \| <type> \| <fields...>` | Declare a fitness rule |
+| `STORY: <id> \| <description>` | Declare a story (followed by flow lines `A → B`) |
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | ✅ | Unique identifier (used in cross-references) |
-| `path` | ✅ | Relative path to source directory |
-| `description` | ✅ | What this container does |
-| `depends_on` | ✅ | List of container IDs this depends on |
-| `project` | | Build system project name (e.g., crate, package, assembly) |
-| `notes` | | Free-form notes |
+### Container `.arch` — Module Keywords
 
-### Module Fields
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `id` | ✅ | Unique within container |
-| `file` | ✅ | Relative path from container root |
-| `files` | | Additional files covered by this module (for multi-project grouping) |
-| `owns` | ✅ | List of concepts this module is responsible for |
-| `boundary` | | What this module should NOT do |
-| `depends_on` | | List of `container/module` references |
-| `must_not_depend` | | Explicit forbidden dependencies |
-| `routes` | | Map of concept → target module (for wiring/orchestrator modules) |
+| Keyword | Description |
+|---------|-------------|
+| `MOD: <id> \| file: <path>` | Module entry point |
+| `FILES: <path>; <path>` | Additional files covered by this module |
+| `OWN: <concept>; <concept>` | Concepts this module owns |
+| `BND: <text>` | Boundary constraint (what this module should NOT do) |
+| `DEP: <container/module>; ...` | Declared dependencies |
+| `NDEP: <container/module>; ...` | Explicit forbidden dependencies |
+| `MODULE: <id>` | Protected module for `restrict_callers_to` rules |
 
 ### Rule Types
 
 | Type | Fields | Description |
 |------|--------|-------------|
-| `no_dependency` | `from`, `to`, `reason` | Forbids dependency between modules/containers |
-| `no_import_from` | `from`, `pattern`, `reason` | Forbids imports matching a glob pattern (e.g., `tests*`) |
-| `boundary` | `module`/`modules`, `constraint` | Enforces a constraint on what a module can do |
+| `no_dependency` | `from:`, `to:` | Forbids dependency between modules/containers |
+| `no_import_from` | `from:`, `pattern:` | Forbids imports matching a glob pattern |
+| `boundary` | `module:`/`modules:`, `constraint:` | Enforces a prose constraint on what a module can do |
+| `restrict_callers_to` | `module:`, `to:` | Allowlist: only listed modules may import the protected module |
 
-Example `no_import_from` rule:
+Example rule declaration:
 
-```yaml
-- id: no-test-imports
-  type: no_import_from
-  from: mypackage           # container to check
-  pattern: "tests*"         # matches against import path segments
-  reason: "Production code must not import from test modules"
+```
+RULE: no-test-imports | no_import_from | from: mypackage | pattern: tests*
+  Production code must not import from test modules
 ```
 
 ### Story Fields
 
+Stories are declared in `system.arch` as:
+
+```
+STORY: user-login | User submits credentials → validated → token issued
+  frontend/login-page → backend/auth → backend/database
+```
+
+Each line after the `STORY:` header is a flow step. `→` separates consecutive module pairs to verify.
+
+### System Fields
+
 | Field | Required | Description |
 |-------|----------|-------------|
-| `id` | ✅ | Unique story identifier |
-| `description` | ✅ | What happens in this flow |
-| `flow` | ✅ | Ordered list of `container/module` steps |
+| `SYSTEM:` | ✅ | Project name |
+| `DESC:` | | What this system does |
+| `IGNORE:` | | Semicolon-separated glob patterns for files to exclude |
+
+### Container Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` (first segment of `CONT:`) | ✅ | Unique container identifier |
+| `path` (second segment) | ✅ | Relative path to source directory |
+| `desc` (third segment) | ✅ | What this container does |
+| `depends_on:` | | Semicolon-separated list of container IDs this depends on |
+| `proj:` | | Build system project name (e.g., crate, package, assembly) |
+
+### Module Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `MOD:` | ✅ | Module id and entry-point file |
+| `FILES:` | | Additional files covered by this module |
+| `OWN:` | ✅ | Semicolon-separated list of concepts this module owns |
+| `BND:` | | What this module should NOT do |
+| `DEP:` | | Semicolon-separated `container/module` dependencies |
+| `NDEP:` | | Semicolon-separated forbidden dependencies |
 
 ## Language Support
 

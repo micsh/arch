@@ -1,0 +1,23 @@
+FILE: rules.rs
+MOD: commands/rules
+OWNS: fitness rule display — lists all rules or filters by module name
+PROFILE: [io, pure-core]
+CHANGE-FREQUENCY: volatile
+
+run: Option<&str> * bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, run_filtered, run_all
+
+run_filtered: &str * &[Rule] * bool → Result<(), String> [pure]
+  note: matches no_dependency (from/to), boundary (modules/module), no_import_from (from), restrict_callers_to (module)
+
+run_all: &[Rule] * bool → Result<(), String> [pure]
+  note: formats all rule types; unknown types fall through to generic display
+
+to_list: &Rule → Vec<String> [pure]
+  note: handles both serde_yaml::Value::String and ::Sequence for Rule.to field
+
+DEPENDS-ON: context, schema
+
+KEY-INVARIANTS:
+- run_filtered must be updated whenever a new rule type is added to schema — silently omitting a type causes the filtered view to return "No rules reference module" for modules covered only by that type
+

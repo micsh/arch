@@ -8,7 +8,7 @@ pub fn run(json: bool) -> Result<(), String> {
     let stories = match ctx.load_stories()? {
         Some(s) => s,
         None => {
-            println!("📖 No stories.yaml found in architecture/");
+            println!("📖 No stories defined in system.arch");
             return Ok(());
         }
     };

@@ -9,9 +9,7 @@ pub struct CoverageResult {
 }
 
 /// Core coverage logic — returns structured results without printing.
-pub fn check() -> Result<CoverageResult, String> {
-    let ctx = ArchContext::load()?;
-
+pub fn check(ctx: &ArchContext) -> Result<CoverageResult, String> {
     // Collect all mapped files and directories covered by entry-point modules
     let mut mapped_files: HashSet<PathBuf> = HashSet::new();
     let mut covered_dirs: HashSet<PathBuf> = HashSet::new();
@@ -101,7 +99,8 @@ fn is_in_covered_dir(path: &std::path::Path, covered_dirs: &HashSet<PathBuf>) ->
 }
 
 pub fn run(json: bool) -> Result<(), String> {
-    let result = check()?;
+    let ctx = ArchContext::load()?;
+    let result = check(&ctx)?;
 
     if json {
         let output = serde_json::json!({

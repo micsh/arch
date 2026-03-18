@@ -1,0 +1,27 @@
+FILE: init.rs
+MOD: commands/init
+OWNS: project scaffolding — generates .arch source files from project structure detection
+PROFILE: [io]
+CHANGE-FREQUENCY: volatile
+
+run: bool → Result<(), String> [io, boundary]
+  calls: scanner::detect_project_type, scan_containers, generate_system_arch, generate_deep_container_arch, generate_container_arch
+
+scan_containers: &Path * &ProjectType → Vec<(String,String)> [io]
+  note: checks candidates ["src","lib","app","packages","crates","services"]; falls back to "main"/root
+
+generate_deep_container_arch: &Path * &str * &str → String [io]
+  calls: infer_dotnet_module, infer_python_module, infer_rust_module
+  note: emits .arch format (MOD:/FILE:/OWN:/BND:/DEP: blocks); deduplicates module IDs using parent-prefixed compound naming
+
+generate_system_arch: &str * &[(String,String)] → String [pure]
+  note: emits ARCH:/SYS:/DESC:/GUIDE:/CONT: block with one CONT: line per detected container
+
+generate_container_arch: &str * &str → String [pure]
+
+DEPENDS-ON: scanner, schema
+
+KEY-INVARIANTS:
+- init aborts if architecture/arch/system.arch already exists — no partial overwrite; users must delete to reinitialize
+- writes architecture/arch/system.arch and architecture/arch/containers/{id}.arch — NOT YAML; old YAML generation is removed
+- deep scan runs .NET → Python → Rust in sequence; Rust scan only runs if neither .NET nor Python found any modules

@@ -1,0 +1,21 @@
+FILE: arch_parser.rs
+MOD: arch_parser/arch_parser
+OWNS: .arch source file discovery and parsing; system.arch and container .arch grammar; ArchSource output structs
+PROFILE: [pure-core, io]
+CHANGE-FREQUENCY: stable
+
+discover_arch_files: &Path → Vec<PathBuf> [io]
+  note: returns architecture/arch/system.arch and architecture/arch/containers/*.arch sorted; returns empty if directory absent
+
+parse_system_arch: &str → Result<ArchSource, String> [pure]
+  note: parses ARCH:/SYS:/DESC:/GUIDE:/CONT:/RULE:/STORY: blocks; unknown keywords silently skipped; MOD: in system.arch is a warning
+
+parse_container_arch: &str * &str * &str → Result<ArchSourceContainer, String> [pure]
+  note: id and sys_name provided by caller; parses CONT:/PATH:/DEP:/DESC:/MOD:/FILE:/FILES:/OWN:/BND:/ROUTES: blocks; FILE: and FILES: are mutually exclusive per MOD block — error if both present
+
+DEPENDS-ON: schema
+
+KEY-INVARIANTS:
+- arch_parser must never import context — they are inverses (arch_parser is a leaf; context calls arch_parser); circular dependency would break the layer model and is enforced by arch-parser-independence and arch-parser-callers fitness rules
+- parse_system_arch and parse_container_arch are pure (no I/O) — callers (context.rs) own all file reads and pass content as &str
+- MODULE: keyword in RULE: blocks is required for restrict_callers_to rules — omitting it causes the rule to silently have no protected module

@@ -1,0 +1,259 @@
+{
+  "files": [
+    {
+      "blocks": [
+        {
+          "file": "arch_parser.rs",
+          "mod_id": "arch_parser/arch_parser",
+          "source_hash": null,
+          "used_by": [
+            "context/context"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\arch_parser\\arch_parser.llm"
+    },
+    {
+      "blocks": [],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\cli\\cli.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "contextpack.rs",
+          "mod_id": "commands/contextcmd",
+          "source_hash": null,
+          "used_by": []
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\contextcmd.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "coverage.rs",
+          "mod_id": "commands/coverage",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli",
+            "commands/stale"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\coverage.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "drift.rs",
+          "mod_id": "commands/drift",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli",
+            "commands/stale"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\drift.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "fitness.rs",
+          "mod_id": "commands/fitness",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli",
+            "commands/stale"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\fitness.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "index.rs",
+          "mod_id": "commands/index",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\index.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "init.rs",
+          "mod_id": "commands/init",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\init.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "mermaid.rs",
+          "mod_id": "commands/mermaid",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\mermaid.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "mod.rs",
+          "mod_id": "commands/mod",
+          "source_hash": null,
+          "used_by": []
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\mod.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "owns.rs",
+          "mod_id": "commands/owns",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\owns.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "rename.rs",
+          "mod_id": "commands/rename",
+          "source_hash": null,
+          "used_by": []
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\rename.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "rules.rs",
+          "mod_id": "commands/rules",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\rules.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "spec.rs",
+          "mod_id": "commands/spec",
+          "source_hash": null,
+          "used_by": []
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\spec.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "stale.rs",
+          "mod_id": "commands/stale",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\stale.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "stories.rs",
+          "mod_id": "commands/stories",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\stories.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "validate.rs",
+          "mod_id": "commands/validate",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli",
+            "commands/stale"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\commands\\validate.llm"
+    },
+    {
+      "blocks": [
+        {
+          "file": "context.rs",
+          "mod_id": "context/context",
+          "source_hash": null,
+          "used_by": [
+            "cli/cli",
+            "commands/contextcmd",
+            "commands/coverage",
+            "commands/drift",
+            "commands/fitness",
+            "commands/index",
+            "commands/mermaid",
+            "commands/owns",
+            "commands/rules",
+            "commands/stale",
+            "commands/stories",
+            "commands/validate",
+            "depgraph/depgraph",
+            "lmindex/lmindex"
+          ]
+        }
+      ],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\context\\context.llm"
+    },
+    {
+      "blocks": [],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\depgraph\\depgraph.llm"
+    },
+    {
+      "blocks": [],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\imports\\imports.llm"
+    },
+    {
+      "blocks": [],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\resolve\\resolve.llm"
+    },
+    {
+      "blocks": [],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\scanner\\scanner.llm"
+    },
+    {
+      "blocks": [],
+      "source": "C:\\Users\\moshalal\\source\\repos\\arch\\architecture\\llmcode\\schema\\schema.llm"
+    }
+  ],
+  "generated_at": "1773837810"
+}

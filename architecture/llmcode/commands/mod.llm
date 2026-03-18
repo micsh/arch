@@ -1,0 +1,11 @@
+FILE: mod.rs
+MOD: commands/mod
+OWNS: command module re-exports
+PROFILE: [pure-core]
+CHANGE-FREQUENCY: volatile
+
+DEPENDS-ON: (none — re-exports only)
+
+KEY-INVARIANTS:
+- Every command module added to commands/ must have a corresponding pub mod here or it is unreachable from main
+

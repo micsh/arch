@@ -1,0 +1,37 @@
+FILE: context.rs
+MOD: context/context
+OWNS: arch-context loading, file walking, and shared output utilities for all commands
+PROFILE: [io]
+CHANGE-FREQUENCY: stable
+
+ArchContext: record — root: PathBuf, arch: Architecture, details: HashMap<String, ContainerDetail>, ignore_patterns: Vec<Pattern>, stories: Option<Stories>
+
+ArchContext::load: () → Result<ArchContext, String> [io]
+  calls: find_system_arch, arch_parser::parse_system_arch, arch_parser::parse_container_arch, schema::compile_ignore_patterns
+  note: reads architecture/arch/system.arch then architecture/arch/containers/{id}.arch for each CONT: declared container; no YAML involved
+
+ArchContext::build_index: &self → ModuleIndex [pure]
+  calls: ModuleIndex::build
+  note: expensive — construct once per command invocation, not per file or per module
+
+ArchContext::load_stories: &self → Result<Option<Stories>, String> [pure]
+  note: returns self.stories (populated by load()); no file I/O
+
+ArchContext::collect_mapped_files: &self → HashSet<PathBuf> [io]
+  note: canonicalises paths; used to exclude explicitly-mapped files when walking directory owners
+
+find_system_arch: () → Result<PathBuf, String> [io]
+  note: returns architecture/arch/system.arch relative to cwd; errors if not found
+
+walk_module_files: &Path * &str * &Module * &HashSet<PathBuf> * &HashSet<&str> * &[Pattern] → Vec<PathBuf> [io]
+  note: expands directory-owner modules (mod.rs, index.ts, etc.) into all source files in subtree; skips SKIP_DIRS and already-mapped files
+
+print_json: &serde_json::Value → Result<(), String> [io]
+
+DEPENDS-ON: schema, resolve, arch_parser
+
+KEY-INVARIANTS:
+- context must never import from commands, scanner, or imports (context-independence fitness rule) — violation breaks the layer model
+- walk_module_files skips files whose canonicalised path is in explicitly_mapped — callers must pass collect_mapped_files output, not an empty set
+- arch_parser is the only caller of parse_system_arch and parse_container_arch — only context/context is allowed by the arch-parser-callers fitness rule
+- load() returns Err if system.arch is missing or unparseable — all commands that call load() propagate this error; partial loads are not possible

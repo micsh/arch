@@ -1,0 +1,28 @@
+FILE: mermaid.rs
+MOD: commands/mermaid
+OWNS: Mermaid diagram generation — container, C4, story flow, and README injection
+PROFILE: [io]
+CHANGE-FREQUENCY: volatile
+
+run: bool * bool * bool * Option<String> * bool → Result<(), String> [io, boundary]
+  calls: render_stories, render_c4, render_containers, export_svg, inject_readme
+
+render_containers: &ArchContext * bool → Result<String, String> [pure]
+render_c4: &ArchContext → Result<String, String> [pure]
+render_stories: &ArchContext → Result<String, String> [io]
+
+inject_readme: &str → Result<(), String> [io]
+  calls: find_outside_code_blocks
+  note: replaces content between <!-- arch:mermaid:start --> and <!-- arch:mermaid:end --> markers
+
+find_outside_code_blocks: &str * &str → Option<usize> [pure]
+  note: skips marker occurrences inside fenced code blocks; uses find('\n') for correct byte offset on CRLF files
+
+export_svg: &str * &str → Result<(), String> [io]
+  note: requires mmdc (mermaid-cli) on PATH; writes temp .mmd file, invokes mmdc, cleans up
+
+DEPENDS-ON: context
+
+KEY-INVARIANTS:
+- find_outside_code_blocks must use content[offset..].find('\n') not line.len()+1 — CRLF files have \r before \n and line.len() excludes it, producing wrong byte offsets for all subsequent markers
+
