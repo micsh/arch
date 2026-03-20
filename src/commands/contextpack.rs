@@ -52,7 +52,7 @@ pub fn run(file: &str, json: bool) -> Result<(), String> {
     if let Some(ref module) = pack.owner_module {
         println!("   owner: {module}");
     } else {
-        println!("   owner: (not mapped in architecture YAML)");
+        println!("   owner: (not mapped in architecture .arch files)");
     }
     if let Some(ref boundary) = pack.boundary {
         println!("   boundary: {boundary}");

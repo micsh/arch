@@ -12,14 +12,14 @@ MOD: init
 
 MOD: validate
   FILE: validate.rs
-  OWN: yaml-integrity; cross-ref-validation; file-existence-checks; mod-link-validation
+  OWN: arch-integrity-validation; cross-ref-validation; file-existence-checks; mod-link-validation
   BND: Read-only validation — never modifies files
   DEP: context/context; llmcode/llmcode
 
 MOD: coverage
   FILE: coverage.rs
   OWN: unmapped-file-detection; source-file-walking
-  BND: Read-only analysis — walks filesystem, compares to YAML
+  BND: Read-only analysis — walks filesystem, compares to .arch declarations
   DEP: context/context
 
 MOD: owns
@@ -84,11 +84,11 @@ MOD: contextcmd
 MOD: rename
   FILE: rename.rs
   OWN: mod-id-migration; llmcode-text-rewrite
-  BND: Mutation command — rewrites MOD: references in .llmcode files; uses context with .ok() (optional)
+  BND: Mutation command — rewrites MOD: references in .llm files; uses context with .ok() (optional)
   DEP: llmcode/llmcode
 
 MOD: spec
   FILE: spec.rs
-  OWN: spec-version-display; llmcode-spec-version-command
-  BND: Display only — emits LLMCODE_SPEC_VERSION; no file I/O
+  OWN: spec-version-display; grammar-spec-command
+  BND: Display only — emits LLMCODE_SPEC or ARCH_SPEC constants; no file I/O
   DEP: schema/schema

@@ -291,7 +291,7 @@ fn parse_cntr_entry(s: &str) -> Option<CntrEntry> {
 /// Validate MOD: links against the set of declared arch module IDs.
 ///
 /// `valid_ids` is the exhaustive set of "container/module" IDs from the
-/// architecture YAML — the caller builds it from ArchContext.
+/// architecture .arch files — the caller builds it from ArchContext.
 ///
 /// Blocks without a MOD: field produce a warning, not an error — this cycle
 /// allows partial coverage; future cycles will tighten to hard error.

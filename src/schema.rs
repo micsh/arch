@@ -341,7 +341,7 @@ containers/api.arch:
 /// Parsed output of a complete `.arch` source tree.
 ///
 /// Produced by `arch_parser::parse_system_arch` + `arch_parser::parse_container_arch`.
-/// Consumed exclusively by `commands/compile` to emit architecture YAML.
+/// Consumed by `context.rs` to build ArchContext from `.arch` source files.
 ///
 /// DR-03: This struct is the explicit contract between arch_parser (pure leaf) and
 /// compile (thin orchestrator). No other command may depend on arch_parser — see

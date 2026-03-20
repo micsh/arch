@@ -74,7 +74,7 @@ pub fn run(json: bool) -> Result<(), String> {
     let ctx = ArchContext::load()?;
 
     if ctx.arch.rules.is_empty() {
-        println!("ℹ️  No rules defined in architecture.yaml");
+        println!("ℹ️  No rules defined in system.arch");
         return Ok(());
     }
 

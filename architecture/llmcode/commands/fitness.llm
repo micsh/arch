@@ -1,6 +1,6 @@
 FILE: fitness.rs
 MOD: commands/fitness
-OWNS: architectural rule enforcement — evaluates rules from architecture.yaml against actual import graph
+OWNS: architectural rule enforcement — evaluates rules from system.arch against actual import graph
 PROFILE: [io, pure-core]
 CHANGE-FREQUENCY: volatile
 

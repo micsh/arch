@@ -1,6 +1,6 @@
 ARCH: 0.4
 SYS: arch
-DESC: Architecture-as-code CLI — validate, query, and maintain architecture YAML for any codebase
+DESC: Architecture-as-code CLI — validate, query, and maintain architecture .arch files for any codebase
 
 GUIDE:
 arch is a single-binary CLI tool. All domain types live in schema.rs.

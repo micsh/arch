@@ -24,13 +24,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Scan project structure and generate initial architecture YAML
+    /// Scan project structure and generate initial architecture .arch files
     Init {
         /// Deep scan: infer modules from .csproj ProjectReference tags and Python packages
         #[arg(long)]
         deep: bool,
     },
-    /// Check YAML integrity: files exist, cross-refs valid, schema correct
+    /// Check .arch integrity: files exist, cross-refs valid, schema correct
     Validate,
     /// List source files not mapped to any module
     Coverage,
@@ -39,13 +39,13 @@ enum Commands {
         /// The concept to look up
         concept: String,
     },
-    /// Check architecture health: validate YAML integrity + find unmapped source files
+    /// Check architecture health: validate .arch integrity + find unmapped source files
     Stale,
     /// Compare declared dependencies against actual code imports
     Drift,
     /// Validate architectural rules against actual code
     Fitness,
-    /// Show fitness rules from architecture.yaml, optionally filtered to a module
+    /// Show fitness rules from system.arch, optionally filtered to a module
     Rules {
         /// Module or container name to filter rules (e.g. context, imports, resolve)
         module: Option<String>,
@@ -76,7 +76,7 @@ enum Commands {
         #[arg(long)]
         file: String,
     },
-    /// Generate Mermaid diagrams from architecture YAML
+    /// Generate Mermaid diagrams from architecture .arch files
     Mermaid {
         /// Generate story flow diagrams instead of container diagram
         #[arg(long)]

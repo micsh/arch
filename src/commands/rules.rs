@@ -14,7 +14,7 @@ pub fn run(module: Option<&str>, json: bool) -> Result<(), String> {
         if json {
             print_json(&serde_json::json!({ "total": 0, "rules": [] }))?;
         } else {
-            println!("ℹ️  No rules defined in architecture.yaml");
+            println!("ℹ️  No rules defined in system.arch");
         }
         return Ok(());
     }

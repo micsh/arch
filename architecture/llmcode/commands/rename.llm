@@ -5,7 +5,7 @@ PROFILE: [io]
 CHANGE-FREQUENCY: stable
 
 run: &str * &str → Result<(), String> [io]
-  note: loads ArchContext with .ok() — warns and proceeds if arch YAML is missing or invalid
+  note: loads ArchContext with .ok() — warns and proceeds if system.arch is missing or invalid
 
 DEPENDS-ON: context, llmcode
 

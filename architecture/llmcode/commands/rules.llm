@@ -14,7 +14,7 @@ run_all: &[Rule] * bool → Result<(), String> [pure]
   note: formats all rule types; unknown types fall through to generic display
 
 to_list: &Rule → Vec<String> [pure]
-  note: handles both serde_yaml::Value::String and ::Sequence for Rule.to field
+  note: Rule.to is Vec<String> — unwrap_or_default() returns empty vec when None
 
 DEPENDS-ON: context, schema
 

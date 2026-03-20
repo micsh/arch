@@ -141,7 +141,7 @@ fn render_c4(ctx: &ArchContext) -> Result<String, String> {
 fn render_stories(ctx: &ArchContext) -> Result<String, String> {
     let stories = match ctx.load_stories()? {
         Some(s) => s,
-        None => return Err("No stories.yaml found in architecture/".to_string()),
+        None => return Err("No stories defined in system.arch".to_string()),
     };
 
     if stories.stories.is_empty() {

@@ -41,7 +41,7 @@ pub fn generate_used_by(ctx: &ArchContext) -> HashMap<String, Vec<String>> {
 /// Compile the arch.index.json payload from the loaded ArchContext.
 ///
 /// Emits: {system, containers, modules, rules, stories}
-/// This is the canonical structured representation of architecture.yaml for
+/// This is the canonical structured representation of system.arch for
 /// machine consumption — normalises field names and adds computed fields.
 pub fn build_arch_index(ctx: &ArchContext) -> Value {
     let containers: Vec<Value> = ctx.arch.containers.iter().map(|c| {
@@ -177,15 +177,15 @@ fn content_hash_short(data: &[u8]) -> String {
     format!("{:016x}", hash)[..8].to_string()
 }
 
-/// Check whether the compiled index files are fresh relative to the arch YAML.
+/// Check whether the compiled index files are fresh relative to system.arch.
 ///
-/// Returns false when either index file is missing OR when architecture.yaml
+/// Returns false when either index file is missing OR when system.arch
 /// has been modified more recently than arch.index.json.
 /// ASSUMPTION: mtime comparison is sufficient for freshness. IF INVALID: add
 /// content-hash comparison.
 pub fn is_index_fresh(root: &Path) -> bool {
     let index_path = root.join("architecture").join("generated").join("arch.index.json");
-    let arch_path = root.join("architecture").join("architecture.yaml");
+    let arch_path = root.join("architecture").join("arch").join("system.arch");
 
     let index_mtime = std::fs::metadata(&index_path)
         .and_then(|m| m.modified())
@@ -355,7 +355,7 @@ pub struct LlmcodeBlockSummary {
 
 /// Build a context pack for a target file.
 ///
-/// Resolves the owning module from the architecture YAML, collects declared
+/// Resolves the owning module from the architecture .arch files, collects declared
 /// dependencies, inverts the dep graph for used-by, and attaches matching
 /// .llmcode blocks.
 pub fn build_context_pack(

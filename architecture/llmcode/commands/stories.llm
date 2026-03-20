@@ -1,6 +1,6 @@
 FILE: stories.rs
 MOD: commands/stories
-OWNS: story flow verification — checks declared flows in stories.yaml against actual import connections
+OWNS: story flow verification — checks declared flows in system.arch against actual import connections
 PROFILE: [io, pure-core]
 CHANGE-FREQUENCY: volatile
 
