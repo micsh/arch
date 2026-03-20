@@ -1,7 +1,7 @@
 use crate::llmcode;
 use std::path::Path;
 
-/// Migrate a module ID across all .llmcode files in the project.
+/// Migrate a module ID across all .llm files in the project.
 ///
 /// Replaces every `MOD: <old_id>` occurrence with `MOD: <new_id>`.
 /// Loads architecture context with `.ok()` — warns and proceeds if unavailable

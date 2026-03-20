@@ -344,7 +344,7 @@ containers/api.arch:
 /// Consumed by `context.rs` to build ArchContext from `.arch` source files.
 ///
 /// DR-03: This struct is the explicit contract between arch_parser (pure leaf) and
-/// compile (thin orchestrator). No other command may depend on arch_parser — see
+/// context.rs (load() internals). No other command may depend on arch_parser — see
 /// the `arch-parser-callers` fitness rule.
 #[derive(Debug, Default)]
 pub struct ArchSource {
