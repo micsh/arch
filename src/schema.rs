@@ -276,6 +276,10 @@ MODULE BLOCKS (in container .arch)
   FILE: <path>              Use FILE: or FILES:, not both. Path relative to container PATH.
   FILES: <path>; <path>     Multi-file module. Semicolon-separated paths relative to PATH.
   OWN: <concept>; <concept> Required. Semicolon-separated owned concepts.
+                            Note: OWN: entries are matched against actual import strings by the
+                            resolver — include namespace prefixes (e.g. `Conductor.Core.Types`)
+                            alongside concept labels. Using concept labels only may cause
+                            broad-match fallback and phantom fitness violations.
   BND: <text>               Optional. Boundary — what this module does NOT do.
   DEP: <id>; <id>           Optional. Semicolon-separated depends_on in container/module form.
   ROUTES: <name>; <name>    Optional. Public entry points / route names.

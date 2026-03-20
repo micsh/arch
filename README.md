@@ -513,7 +513,7 @@ Architecture is declared in plain-text `.arch` files. Run `arch spec --arch` for
 |---------|-------------|
 | `MOD: <id> \| file: <path>` | Module entry point |
 | `FILES: <path>; <path>` | Additional files covered by this module |
-| `OWN: <concept>; <concept>` | Concepts this module owns |
+| `OWN: <concept>; <concept>` | Concepts this module owns. Entries are matched against actual import strings by the resolver — include namespace prefixes (e.g. `Conductor.Core.Types`) alongside concept labels. Using concept labels only may cause broad-match fallback and phantom fitness violations. |
 | `BND: <text>` | Boundary constraint (what this module should NOT do) |
 | `DEP: <container/module>; ...` | Declared dependencies |
 | `NDEP: <container/module>; ...` | Explicit forbidden dependencies |
@@ -570,7 +570,7 @@ Each line after the `STORY:` header is a flow step. `→` separates consecutive 
 |-------|----------|-------------|
 | `MOD:` | ✅ | Module id and entry-point file |
 | `FILES:` | | Additional files covered by this module |
-| `OWN:` | ✅ | Semicolon-separated list of concepts this module owns |
+| `OWN:` | ✅ | Semicolon-separated concepts this module owns. Include namespace prefixes (e.g. `Conductor.Core.Types`) alongside concept labels — entries are matched against actual import strings by the resolver; concept labels only may cause broad-match fallback and phantom fitness violations. |
 | `BND:` | | What this module should NOT do |
 | `DEP:` | | Semicolon-separated `container/module` dependencies |
 | `NDEP:` | | Semicolon-separated forbidden dependencies |

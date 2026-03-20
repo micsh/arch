@@ -1,6 +1,6 @@
 [package]
 name = "arch"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 description = "Architecture-as-code for any codebase. Define, query, and validate your project structure using YAML."
 license = "MIT"
