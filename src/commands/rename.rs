@@ -23,7 +23,7 @@ pub fn run(old_id: &str, new_id: &str) -> Result<(), String> {
 
     let paths = llmcode::discover_llmcode_files(Path::new(&root));
     if paths.is_empty() {
-        println!("No .llmcode files found — nothing to rename.");
+        println!("No .llm files found — nothing to rename.");
         return Ok(());
     }
 
@@ -53,7 +53,7 @@ pub fn run(old_id: &str, new_id: &str) -> Result<(), String> {
     }
 
     if files_changed == 0 {
-        println!("No occurrences of 'MOD: {old_id}' found in .llmcode files.");
+        println!("No occurrences of 'MOD: {old_id}' found in .llm files.");
     } else {
         println!(
             "\n✅ Renamed '{old_id}' → '{new_id}' in {files_changed} file(s), {updated} occurrence(s)."
