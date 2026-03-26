@@ -1,4 +1,4 @@
-use glob::Pattern;
+﻿use glob::Pattern;
 use serde::Serialize;
 
 /// Check if a relative path matches any of the ignore patterns.
@@ -170,7 +170,7 @@ pub const SKIP_DIRS: &[&str] = &[
 
 /// Full llmcode grammar specification text.
 pub const LLMCODE_SPEC: &str = r#"llmcode grammar spec v0.4
-═══════════════════════════════════════════════════════
+=======================================================
 
 OVERVIEW
   .llm files document modules for AI-assisted coding.
@@ -218,16 +218,16 @@ EXAMPLES
 
 /// Full .arch grammar specification text.
 pub const ARCH_SPEC: &str = r#".arch grammar spec v0.4
-═══════════════════════════════════════════════════════
+=======================================================
 
 OVERVIEW
   Two file types define a project's architecture:
     architecture/arch/system.arch        — system declaration, rules, stories
     architecture/arch/containers/{id}.arch — one per container, modules defined here
 
-═══════════════════════════════════════════════════════
+=======================================================
 SYSTEM.ARCH FIELDS
-═══════════════════════════════════════════════════════
+=======================================================
 
   ARCH: 0.4                 Required. Grammar version. First line of file.
   SYS: <name>               Required. System name. No slashes or spaces.
@@ -260,9 +260,9 @@ STORY BLOCKS (in system.arch)
   FLOW: <id>; <id>          Required. Semicolon-separated module IDs in flow order.
                               Use container/module form.
 
-═══════════════════════════════════════════════════════
+=======================================================
 CONTAINER .ARCH FIELDS
-═══════════════════════════════════════════════════════
+=======================================================
 
   ARCH: 0.4                 Required. Grammar version. First line.
   CONT: <id>                Required. Container ID (must match system.arch CONT: declaration).
@@ -284,9 +284,9 @@ MODULE BLOCKS (in container .arch)
   DEP: <id>; <id>           Optional. Semicolon-separated depends_on in container/module form.
   ROUTES: <name>; <name>    Optional. Public entry points / route names.
 
-═══════════════════════════════════════════════════════
+=======================================================
 PARSING RULES
-═══════════════════════════════════════════════════════
+=======================================================
 
   - Lines beginning with '#' are comments — ignored.
   - Blank lines are ignored.
@@ -301,9 +301,9 @@ PARSING RULES
   - MOD: in system.arch is a warning and skipped.
   - Unknown keywords are silently skipped (forward compatible).
 
-═══════════════════════════════════════════════════════
+=======================================================
 EXAMPLES
-═══════════════════════════════════════════════════════
+=======================================================
 
 system.arch:
   ARCH: 0.4
