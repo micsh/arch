@@ -35,3 +35,6 @@ KEY-INVARIANTS:
 - walk_module_files skips files whose canonicalised path is in explicitly_mapped — callers must pass collect_mapped_files output, not an empty set
 - arch_parser is the only caller of parse_system_arch and parse_container_arch — only context/context is allowed by the arch-parser-callers fitness rule
 - load() returns Err if system.arch is missing or unparseable — all commands that call load() propagate this error; partial loads are not possible
+
+
+

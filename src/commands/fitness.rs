@@ -10,6 +10,7 @@ pub struct RuleResult {
     pub rule_id: String,
     pub passed: bool,
     pub violations: Vec<String>,
+    pub advisory_notes: Vec<String>,
     pub advisory: bool,
 }
 
@@ -49,7 +50,8 @@ pub fn check(ctx: &ArchContext) -> Result<FitnessResult, String> {
                         "(manual check) {}",
                         rule.constraint.as_deref().unwrap_or("no constraint specified")
                     )],
-                    advisory: false,
+                    advisory_notes: vec![],
+        advisory: false,
                 });
             }
             "restrict_callers_to" => {
@@ -60,7 +62,8 @@ pub fn check(ctx: &ArchContext) -> Result<FitnessResult, String> {
                     rule_id: rule.id.clone(),
                     passed: true,
                     violations: vec![format!("Unknown rule type '{other}' — skipped")],
-                    advisory: false,
+                    advisory_notes: vec![],
+        advisory: false,
                 });
             }
         }
@@ -88,10 +91,10 @@ pub fn run(json: bool) -> Result<(), String> {
 fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
     let passed = results.iter().filter(|r| r.passed).count();
     let failed = results.iter().filter(|r| !r.passed).count();
-    // manual: passed with violations, but NOT advisory (advisory show inline under ✅)
+    // manual: passed with violations (boundary rules) — advisory rules excluded (they're in advisory_notes)
     let manual = results
         .iter()
-        .filter(|r| r.passed && !r.violations.is_empty() && !r.advisory)
+        .filter(|r| r.passed && !r.violations.is_empty())
         .count();
 
     if json {
@@ -119,12 +122,10 @@ fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
     }
 
     for r in results {
-        if r.passed && (r.violations.is_empty() || r.advisory) {
+        if r.passed && r.violations.is_empty() {
             println!("✅ {}", r.rule_id);
-            if r.advisory {
-                for v in &r.violations {
-                    println!("    {v}");
-                }
+            for note in &r.advisory_notes {
+                println!("    📋 {note}");
             }
         }
     }
@@ -132,7 +133,7 @@ fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
     if manual > 0 {
         println!();
         for r in results {
-            if r.passed && !r.violations.is_empty() && !r.advisory {
+            if r.passed && !r.violations.is_empty() {
                 println!("📋 {} {}", r.rule_id, r.violations.first().map(|s| s.as_str()).unwrap_or(""));
             }
         }
@@ -166,7 +167,8 @@ fn evaluate_no_dependency(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'from' field".to_string()],
-                advisory: false,
+                advisory_notes: vec![],
+        advisory: false,
         }
         }
     };
@@ -178,7 +180,8 @@ fn evaluate_no_dependency(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing or invalid 'to' field".to_string()],
-                advisory: false,
+                advisory_notes: vec![],
+        advisory: false,
         }
         }
     };
@@ -214,6 +217,7 @@ fn evaluate_no_dependency(
         rule_id: rule.id.clone(),
         passed: violations.is_empty(),
         violations,
+        advisory_notes: vec![],
         advisory: false,
     }
 }
@@ -234,7 +238,8 @@ fn evaluate_restrict_callers_to(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'module' field".to_string()],
-                advisory: false,
+                advisory_notes: vec![],
+        advisory: false,
         }
         }
     };
@@ -247,7 +252,8 @@ fn evaluate_restrict_callers_to(
                 "allowed list is empty; use no_dependency if you intend to forbid all callers"
                     .to_string(),
             ],
-            advisory: false,
+            advisory_notes: vec![],
+        advisory: false,
         };
     }
 
@@ -274,25 +280,23 @@ fn evaluate_restrict_callers_to(
     }
 
     // Advisory: if allowed_max is set and allowed list exceeds it, emit informational advisory.
-    // passed remains true — advisory is exit 0.
-    let advisory = if let Some(max) = rule.allowed_max {
+    // Advisory goes into advisory_notes — NOT violations — so passed = violations.is_empty().
+    let mut advisory_notes: Vec<String> = Vec::new();
+    if let Some(max) = rule.allowed_max {
         if rule.allowed.len() > max {
-            violations.push(format!(
-                "📋 advisory: allowed list has {} callers but allowed_max is {} — consider splitting the responsibility",
+            advisory_notes.push(format!(
+                "advisory: allowed list has {} callers but allowed_max is {} — consider splitting the responsibility",
                 rule.allowed.len(), max
             ));
-            true
-        } else {
-            false
         }
-    } else {
-        false
-    };
+    }
+    let advisory = !advisory_notes.is_empty();
 
     RuleResult {
         rule_id: rule.id.clone(),
-        passed: violations.iter().all(|v| v.starts_with("📋 advisory")),
+        passed: violations.is_empty(),
         violations,
+        advisory_notes,
         advisory,
     }
 }
@@ -329,7 +333,8 @@ fn evaluate_no_import_from(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'from' field".to_string()],
-                advisory: false,
+                advisory_notes: vec![],
+        advisory: false,
         }
         }
     };
@@ -341,7 +346,8 @@ fn evaluate_no_import_from(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'pattern' field".to_string()],
-                advisory: false,
+                advisory_notes: vec![],
+        advisory: false,
         }
         }
     };
@@ -353,7 +359,8 @@ fn evaluate_no_import_from(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec![format!("Invalid glob pattern '{}': {}", pattern_str, e)],
-                advisory: false,
+                advisory_notes: vec![],
+        advisory: false,
             }
         }
     };
@@ -422,6 +429,7 @@ fn evaluate_no_import_from(
         rule_id: rule.id.clone(),
         passed: violations.is_empty(),
         violations,
+        advisory_notes: vec![],
         advisory: false,
     }
 }

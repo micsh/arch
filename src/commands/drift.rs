@@ -121,7 +121,10 @@ pub fn run(json: bool, stale_declared: bool) -> Result<(), String> {
 }
 
 /// Compute (declared − actual): deps declared in .arch but never imported in practice.
-fn check_stale_declared(ctx: &ArchContext) -> Vec<StaleDeclaredItem> {
+///
+/// ASSUMPTION: container.depends_on stale deps are not checked — module-level only.
+/// IF INVALID: add a second pass over container.depends_on × actual container-level dep graph.
+pub fn check_stale_declared(ctx: &ArchContext) -> Vec<StaleDeclaredItem> {
     use std::collections::HashMap;
 
     let index = ctx.build_index();
