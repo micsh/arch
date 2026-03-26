@@ -151,6 +151,7 @@ fn arch_source_to_architecture(src: &ArchSource) -> Architecture {
         constraint: r.constraint.clone(),
         pattern: None,
         allowed: r.allowed.clone(),
+        allowed_max: r.allowed_max,
     }).collect();
 
     Architecture {

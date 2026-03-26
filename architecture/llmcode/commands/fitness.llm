@@ -4,7 +4,7 @@ OWNS: architectural rule enforcement — evaluates rules from system.arch agains
 PROFILE: [io, pure-core]
 CHANGE-FREQUENCY: volatile
 
-RuleResult: record — rule_id, passed, violations: Vec<String>
+RuleResult: record [Serialize] — rule_id, passed, violations: Vec<String>, advisory: bool
 
 run: bool → Result<(), String> [io, boundary]
   calls: ArchContext::load, ctx::build_index, depgraph::build_dep_graph, evaluate_no_dependency, evaluate_no_import_from, evaluate_restrict_callers_to
@@ -16,6 +16,7 @@ evaluate_no_dependency: &Rule * &HashMap<String,HashSet<String>> * &Architecture
 evaluate_restrict_callers_to: &Rule * &HashMap<String,HashSet<String>> * &HashMap<String,ContainerDetail> → RuleResult [pure]
   calls: resolve_rule_target
   note: empty allowed list → always fails with guidance to use no_dependency instead
+  note: if allowed_max is set and allowed.len() > allowed_max → advisory fires (passed: true, advisory: true, exit 0)
 
 evaluate_no_import_from: &Rule * &ArchContext → RuleResult [io]
   note: reads source files directly; uses glob pattern matching on import segments
@@ -23,9 +24,11 @@ evaluate_no_import_from: &Rule * &ArchContext → RuleResult [io]
 resolve_rule_target: &str * &HashMap<String,ContainerDetail> → HashSet<String> [pure]
   note: "container" expands to all container/module IDs; "container/module" is used as-is
 
-DEPENDS-ON: context, imports, depgraph, schema, schema
+DEPENDS-ON: context, imports, depgraph, schema
 
 KEY-INVARIANTS:
 - boundary rules always pass (manual check) — they are documentary only; a new automated boundary check requires a new rule type and evaluator arm
 - restrict_callers_to with empty allowed list returns a failure result, not a panic — callers see it as a rule violation
+- advisory: bool is separate from passed — both can be true simultaneously; advisory never causes exit 1
+- manual count in report_fitness excludes advisory rules (they display inline under ✅ not in the manual section)
 

@@ -116,6 +116,10 @@ pub struct Rule {
     /// (`protocols-parser`) rather than targeting `protocols/parser` within a shared container.
     #[serde(default)]
     pub allowed: Vec<String>,
+    /// Advisory threshold: if `allowed.len() > allowed_max`, emit an informational advisory.
+    /// Does not flip passed/failed — advisory is exit 0.
+    #[serde(default)]
+    pub allowed_max: Option<usize>,
 }
 
 /// Entry-point filenames that imply directory ownership.
@@ -407,6 +411,7 @@ pub struct ArchSourceRule {
     pub to: Vec<String>,
     pub module: Option<String>,
     pub allowed: Vec<String>,
+    pub allowed_max: Option<usize>,
     pub constraint: Option<String>,
     pub reason: Option<String>,
 }

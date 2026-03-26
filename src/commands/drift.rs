@@ -1,4 +1,5 @@
 use crate::context::{self, ArchContext, print_json};
+use crate::depgraph;
 use crate::imports;
 use crate::resolve::is_external_import;
 use crate::schema;
@@ -15,9 +16,17 @@ pub struct DriftItem {
     pub kind: String,
 }
 
+#[derive(Serialize)]
+pub struct StaleDeclaredItem {
+    pub module_id: String,
+    pub file: String,
+    pub declared_dep: String,
+}
+
 pub struct DriftResult {
     pub items: Vec<DriftItem>,
     pub scanned_count: usize,
+    pub stale_declared: Vec<StaleDeclaredItem>,
 }
 
 /// Scan source files and return all drift violations without printing anything.
@@ -97,13 +106,59 @@ pub fn check(ctx: &ArchContext) -> Result<DriftResult, String> {
         }
     }
 
-    Ok(DriftResult { items: drift_items, scanned_count })
+    Ok(DriftResult { items: drift_items, scanned_count, stale_declared: Vec::new() })
 }
 
-pub fn run(json: bool) -> Result<(), String> {
+pub fn run(json: bool, stale_declared: bool) -> Result<(), String> {
     let ctx = ArchContext::load()?;
-    let result = check(&ctx)?;
-    report_drift(json, result.scanned_count, &result.items)
+    let mut result = check(&ctx)?;
+
+    if stale_declared {
+        result.stale_declared = check_stale_declared(&ctx);
+    }
+
+    report_drift(json, stale_declared, result.scanned_count, &result.items, &result.stale_declared)
+}
+
+/// Compute (declared − actual): deps declared in .arch but never imported in practice.
+fn check_stale_declared(ctx: &ArchContext) -> Vec<StaleDeclaredItem> {
+    use std::collections::HashMap;
+
+    let index = ctx.build_index();
+    // resolve_self=true so same-container refs are included in actual graph
+    let actual_deps: HashMap<String, HashSet<String>> = depgraph::build_dep_graph(ctx, &index, true);
+
+    let mut stale = Vec::new();
+
+    for container in &ctx.arch.containers {
+        let detail = match ctx.details.get(&container.id) {
+            Some(d) => d,
+            None => continue,
+        };
+
+        for module in &detail.modules {
+            let module_id = format!("{}/{}", container.id, module.id).to_lowercase();
+            let actual = actual_deps.get(&module_id).cloned().unwrap_or_default();
+
+            for dep in &module.depends_on {
+                let dep_lower = dep.to_lowercase();
+                // Check if any actual dep starts with or equals the declared dep
+                let is_used = actual.iter().any(|a| {
+                    a == &dep_lower || a.starts_with(&format!("{}/", dep_lower))
+                });
+                if !is_used {
+                    let file = module.file.clone();
+                    stale.push(StaleDeclaredItem {
+                        module_id: format!("{}/{}", container.id, module.id),
+                        file,
+                        declared_dep: dep.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    stale
 }
 
 fn check_drift(
@@ -205,13 +260,14 @@ fn check_drift(
     }
 }
 
-fn report_drift(json: bool, scanned_count: usize, drift_items: &[DriftItem]) -> Result<(), String> {
+fn report_drift(json: bool, stale_declared: bool, scanned_count: usize, drift_items: &[DriftItem], stale: &[StaleDeclaredItem]) -> Result<(), String> {
     if json {
         let output = serde_json::json!({
             "scanned": scanned_count,
             "issues": drift_items.len(),
             "forbidden": drift_items.iter().filter(|d| d.kind == "forbidden").collect::<Vec<_>>(),
             "undeclared": drift_items.iter().filter(|d| d.kind == "undeclared").collect::<Vec<_>>(),
+            "stale_declared": stale,
         });
         print_json(&output)?;
         let forbidden_count = drift_items.iter().filter(|d| d.kind == "forbidden").count();
@@ -221,7 +277,7 @@ fn report_drift(json: bool, scanned_count: usize, drift_items: &[DriftItem]) -> 
         return Ok(());
     }
 
-    if drift_items.is_empty() {
+    if drift_items.is_empty() && (!stale_declared || stale.is_empty()) {
         println!("✅ No dependency drift detected ({scanned_count} modules scanned)");
     } else {
         let forbidden: Vec<&DriftItem> = drift_items.iter().filter(|d| d.kind == "forbidden").collect();
@@ -240,6 +296,13 @@ fn report_drift(json: bool, scanned_count: usize, drift_items: &[DriftItem]) -> 
             for d in &undeclared {
                 println!("  {} ({}:{})", d.module_id, d.file, d.line_number);
                 println!("    import: {} → {}", d.import_raw, d.target_module);
+            }
+        }
+
+        if stale_declared && !stale.is_empty() {
+            println!("\n⚠️  {} stale declared dep(s):\n", stale.len());
+            for s in stale {
+                println!("  {} ({}): declares dep on {} but no imports resolve to it", s.module_id, s.file, s.declared_dep);
             }
         }
 

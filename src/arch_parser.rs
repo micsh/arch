@@ -161,6 +161,10 @@ pub fn parse_system_arch(content: &str) -> Result<ArchSource, String> {
             if let Some(ref mut r) = current_rule {
                 r.allowed = split_semi(rest);
             }
+        } else if let Some(rest) = keyword_value(trimmed, "ALLOWED_MAX") {
+            if let Some(ref mut r) = current_rule {
+                r.allowed_max = rest.trim().parse::<usize>().ok();
+            }
         } else if let Some(rest) = keyword_value(trimmed, "MODULE") {
             if let Some(ref mut r) = current_rule {
                 r.module = Some(rest.to_string());

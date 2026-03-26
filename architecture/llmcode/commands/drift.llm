@@ -1,28 +1,34 @@
 FILE: drift.rs
 MOD: commands/drift
-OWNS: dependency drift detection — actual imports vs declared depends_on
+OWNS: dependency drift detection — actual imports vs declared depends_on; stale-declared reverse drift
 PROFILE: [io, pure-core]
 CHANGE-FREQUENCY: volatile
 
 DriftItem: record [pub] — module_id, file, import_raw, line_number, target_module, kind ("forbidden"|"undeclared")
-DriftResult: record [pub] — items: Vec<DriftItem>, scanned_count: usize
+StaleDeclaredItem: record [pub, Serialize] — module_id, file, declared_dep
+DriftResult: record [pub] — items: Vec<DriftItem>, scanned_count: usize, stale_declared: Vec<StaleDeclaredItem>
 
 check: &ArchContext → Result<DriftResult, String> [io]
   calls: ctx::build_index, imports::extract_imports, resolve::is_external_import, check_drift
   called-by: run, stale::run
+  note: stale_declared field is always empty Vec — stale computation runs in run() only
 
-run: bool → Result<(), String> [io, boundary]
-  calls: ArchContext::load, check, report_drift
+run: bool * bool → Result<(), String> [io, boundary]
+  calls: ArchContext::load, check, check_stale_declared (if flag set), report_drift
+
+check_stale_declared: &ArchContext → Vec<StaleDeclaredItem> [io]
+  note: build_dep_graph(resolve_self=true) to include same-container refs; computes declared − actual
 
 check_drift: &HashSet<String> * &str * &str * &HashSet<String> * &HashSet<String> * &HashSet<String> * &Module * &str * &Import * &mut Vec<DriftItem> → ()
   note: groups resolved targets by container; broad fan-out (>1 target per container) collapses to [broad match] violation
 
-report_drift: bool * usize * &[DriftItem] → Result<(), String>
-  note: exit code 1 only on forbidden violations; undeclared-only exits 0
+report_drift: bool * bool * usize * &[DriftItem] * &[StaleDeclaredItem] → Result<(), String>
+  note: exit code 1 only on forbidden violations; undeclared and stale-declared exit 0
 
-DEPENDS-ON: context, imports, resolve
+DEPENDS-ON: context, imports, resolve, depgraph
 
 KEY-INVARIANTS:
 - broad-match declared check uses d.starts_with(&format!("{}/", target_container)) — direction matters; reversing it (v0.5.2 bug) suppresses all broad-match warnings for declared cross-container deps
 - forbidden deps exit code 1; undeclared-only is a warning (exit 0) — stale inherits this behaviour via DriftResult
+- stale_declared computation only runs when --stale-declared flag is passed; check() signature is unchanged (stale.rs unaffected)
 

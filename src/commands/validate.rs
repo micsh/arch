@@ -13,6 +13,7 @@ pub struct ValidationResult {
 pub fn check(ctx: &ArchContext) -> Result<ValidationResult, String> {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
+    let mut seen_warnings: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     if ctx.arch.system.name.is_empty() {
         errors.push("system.name is empty".to_string());
@@ -102,8 +103,8 @@ pub fn check(ctx: &ArchContext) -> Result<ValidationResult, String> {
                 if let Ok(reparsed) = llmcode::parse_llmcode_file(path, &content) {
                     for block in &reparsed.blocks {
                         for cntr in &block.cntr {
-                            validate_cntr_side(&cntr.left_module, &cntr.constraint, path, &all_module_ids, &mut warnings);
-                            validate_cntr_side(&cntr.right_module, &cntr.constraint, path, &all_module_ids, &mut warnings);
+                            validate_cntr_side(&cntr.left_module, &cntr.constraint, path, &all_module_ids, &mut warnings, &mut seen_warnings);
+                            validate_cntr_side(&cntr.right_module, &cntr.constraint, path, &all_module_ids, &mut warnings, &mut seen_warnings);
                         }
                     }
                 }
@@ -127,13 +128,17 @@ fn validate_cntr_side(
     path: &std::path::Path,
     valid_ids: &std::collections::HashSet<String>,
     warnings: &mut Vec<String>,
+    seen_warnings: &mut std::collections::HashSet<String>,
 ) {
     let module_part = side.split("::").next().unwrap_or(side);
     if module_part.contains('/') && !valid_ids.contains(module_part) {
-        warnings.push(format!(
+        let warn_str = format!(
             "llmcode CNTR: '{}' — '{}' not found in arch modules (stale reference, constraint: {})",
             path.display(), module_part, constraint
-        ));
+        );
+        if seen_warnings.insert(warn_str.clone()) {
+            warnings.push(warn_str);
+        }
     }
 }
 

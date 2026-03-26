@@ -1,4 +1,4 @@
-use crate::context::{ArchContext, print_json};
+﻿use crate::context::{ArchContext, print_json};
 use crate::depgraph;
 use crate::imports;
 use crate::schema::{Architecture, ContainerDetail, Rule};
@@ -10,6 +10,7 @@ pub struct RuleResult {
     pub rule_id: String,
     pub passed: bool,
     pub violations: Vec<String>,
+    pub advisory: bool,
 }
 
 /// Aggregated fitness check result — returned by check() for composition by stale.
@@ -48,6 +49,7 @@ pub fn check(ctx: &ArchContext) -> Result<FitnessResult, String> {
                         "(manual check) {}",
                         rule.constraint.as_deref().unwrap_or("no constraint specified")
                     )],
+                    advisory: false,
                 });
             }
             "restrict_callers_to" => {
@@ -58,6 +60,7 @@ pub fn check(ctx: &ArchContext) -> Result<FitnessResult, String> {
                     rule_id: rule.id.clone(),
                     passed: true,
                     violations: vec![format!("Unknown rule type '{other}' — skipped")],
+                    advisory: false,
                 });
             }
         }
@@ -85,9 +88,10 @@ pub fn run(json: bool) -> Result<(), String> {
 fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
     let passed = results.iter().filter(|r| r.passed).count();
     let failed = results.iter().filter(|r| !r.passed).count();
+    // manual: passed with violations, but NOT advisory (advisory show inline under ✅)
     let manual = results
         .iter()
-        .filter(|r| r.passed && !r.violations.is_empty())
+        .filter(|r| r.passed && !r.violations.is_empty() && !r.advisory)
         .count();
 
     if json {
@@ -115,15 +119,20 @@ fn report_fitness(json: bool, results: &[RuleResult]) -> Result<(), String> {
     }
 
     for r in results {
-        if r.passed && r.violations.is_empty() {
+        if r.passed && (r.violations.is_empty() || r.advisory) {
             println!("✅ {}", r.rule_id);
+            if r.advisory {
+                for v in &r.violations {
+                    println!("    {v}");
+                }
+            }
         }
     }
 
     if manual > 0 {
         println!();
         for r in results {
-            if r.passed && !r.violations.is_empty() {
+            if r.passed && !r.violations.is_empty() && !r.advisory {
                 println!("📋 {} {}", r.rule_id, r.violations.first().map(|s| s.as_str()).unwrap_or(""));
             }
         }
@@ -157,7 +166,8 @@ fn evaluate_no_dependency(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'from' field".to_string()],
-            }
+                advisory: false,
+        }
         }
     };
 
@@ -168,7 +178,8 @@ fn evaluate_no_dependency(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing or invalid 'to' field".to_string()],
-            }
+                advisory: false,
+        }
         }
     };
 
@@ -203,6 +214,7 @@ fn evaluate_no_dependency(
         rule_id: rule.id.clone(),
         passed: violations.is_empty(),
         violations,
+        advisory: false,
     }
 }
 
@@ -222,7 +234,8 @@ fn evaluate_restrict_callers_to(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'module' field".to_string()],
-            }
+                advisory: false,
+        }
         }
     };
 
@@ -234,6 +247,7 @@ fn evaluate_restrict_callers_to(
                 "allowed list is empty; use no_dependency if you intend to forbid all callers"
                     .to_string(),
             ],
+            advisory: false,
         };
     }
 
@@ -259,10 +273,27 @@ fn evaluate_restrict_callers_to(
         }
     }
 
+    // Advisory: if allowed_max is set and allowed list exceeds it, emit informational advisory.
+    // passed remains true — advisory is exit 0.
+    let advisory = if let Some(max) = rule.allowed_max {
+        if rule.allowed.len() > max {
+            violations.push(format!(
+                "📋 advisory: allowed list has {} callers but allowed_max is {} — consider splitting the responsibility",
+                rule.allowed.len(), max
+            ));
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
     RuleResult {
         rule_id: rule.id.clone(),
-        passed: violations.is_empty(),
+        passed: violations.iter().all(|v| v.starts_with("📋 advisory")),
         violations,
+        advisory,
     }
 }
 
@@ -298,7 +329,8 @@ fn evaluate_no_import_from(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'from' field".to_string()],
-            }
+                advisory: false,
+        }
         }
     };
 
@@ -309,7 +341,8 @@ fn evaluate_no_import_from(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec!["Rule missing 'pattern' field".to_string()],
-            }
+                advisory: false,
+        }
         }
     };
 
@@ -320,6 +353,7 @@ fn evaluate_no_import_from(
                 rule_id: rule.id.clone(),
                 passed: false,
                 violations: vec![format!("Invalid glob pattern '{}': {}", pattern_str, e)],
+                advisory: false,
             }
         }
     };
@@ -388,5 +422,6 @@ fn evaluate_no_import_from(
         rule_id: rule.id.clone(),
         passed: violations.is_empty(),
         violations,
+        advisory: false,
     }
 }

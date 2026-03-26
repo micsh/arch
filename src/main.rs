@@ -42,7 +42,11 @@ enum Commands {
     /// Check architecture health: validate .arch integrity + find unmapped source files
     Stale,
     /// Compare declared dependencies against actual code imports
-    Drift,
+    Drift {
+        /// Also report declared dependencies that have no matching actual imports (reverse drift)
+        #[arg(long)]
+        stale_declared: bool,
+    },
     /// Validate architectural rules against actual code
     Fitness,
     /// Show fitness rules from system.arch, optionally filtered to a module
@@ -106,7 +110,7 @@ fn main() {
         Commands::Coverage => commands::coverage::run(json),
         Commands::Owns { concept } => commands::owns::run(&concept, json),
         Commands::Stale => commands::stale::run(json),
-        Commands::Drift => commands::drift::run(json),
+        Commands::Drift { stale_declared } => commands::drift::run(json, stale_declared),
         Commands::Fitness => commands::fitness::run(json),
         Commands::Rules { module } => commands::rules::run(module.as_deref(), json),
         Commands::Stories => commands::stories::run(json),

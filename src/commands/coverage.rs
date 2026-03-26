@@ -40,11 +40,15 @@ pub fn check(ctx: &ArchContext) -> Result<CoverageResult, String> {
 
     let mut unmapped = Vec::new();
     let skip_dirs: HashSet<&str> = schema::SKIP_DIRS.iter().copied().collect();
+    let mut walked_roots: HashSet<PathBuf> = HashSet::new();
 
     for container in &ctx.arch.containers {
         let container_path = ctx.root.join(&container.path);
         if !container_path.exists() {
             continue;
+        }
+        if !walked_roots.insert(container_path.clone()) {
+            continue; // already walked this root — skip to avoid duplicate entries
         }
 
         for entry in WalkDir::new(&container_path)

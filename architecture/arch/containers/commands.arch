@@ -37,12 +37,12 @@ MOD: stale
 MOD: drift
   FILE: drift.rs
   OWN: dependency-drift-detection; undeclared-dependency-detection
-  BND: Read-only analysis — scans source imports vs declared depends_on
+  BND: Read-only analysis — scans source imports vs declared depends_on; --stale-declared flag inverts the dep comparison (declared − actual)
   DEP: context/context; imports/imports; resolve/resolve
 
 MOD: fitness
   FILE: fitness.rs
-  OWN: rule-validation; no-dependency-enforcement; boundary-rule-reporting
+  OWN: rule-validation; no-dependency-enforcement; boundary-rule-reporting; allowed_max-advisory
   BND: Read-only analysis — evaluates architecture rules against actual imports
   DEP: context/context; imports/imports; depgraph/depgraph
 
